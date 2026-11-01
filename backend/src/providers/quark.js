@@ -1,6 +1,7 @@
 import QRCode from 'qrcode'
 import crypto from 'node:crypto'
 import { Provider } from './base.js'
+import { shareSignature } from './fingerprint.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125 Safari/537.36'
 const CLIENT_ID = '532'
@@ -174,12 +175,22 @@ export class QuarkProvider extends Provider {
     return null
   }
 
-  async transferFolder(account, targetPath, desiredName) {
+  async transferFolder(account, targetPath, desiredName, reuseExisting = false) {
     const parentFid = await this.ensureFolder(account, targetPath)
     const children = await this.listByFid(account, parentFid, targetPath)
-    let name = safeName(desiredName)
+    const base = safeName(desiredName)
+    if (reuseExisting) {
+      const existing = children.find((x) => x.name === base)
+      if (existing && existing.type !== 'dir') {
+        this.fail(`无法同步到固定目录: ${joinPath(targetPath, base)} 已被同名文件占用`)
+      }
+      const path = joinPath(targetPath, base)
+      const fid = existing?.fid || await this.ensureFolder(account, path)
+      return { path, fid: String(fid) }
+    }
+    let name = base
     for (let i = 2; i < 100 && children.some((x) => x.name === name); i++) {
-      name = `${safeName(desiredName)} (${i})`
+      name = `${base} (${i})`
     }
     const path = joinPath(targetPath, name)
     const fid = await this.ensureFolder(account, path)
@@ -365,7 +376,7 @@ export class QuarkProvider extends Provider {
     }
   }
 
-  async transfer(account, link, passcode, targetPath = '/') {
+  async shareContext(account, link, passcode) {
     this.needCookie(account)
     const pwdId = link.key
     if (!pwdId) this.fail('夸克分享链接格式不正确')
@@ -380,7 +391,6 @@ export class QuarkProvider extends Provider {
       `https://drive-pc.quark.cn/1/clouddrive/share/sharepage/detail?pr=ucpro&fr=pc&pwd_id=${pwdId}&stoken=${encodeURIComponent(stoken)}&pdir_fid=0&_page=1&_size=100`)
     const items = (detail.data?.list || []).filter((x) => x.dir || x.file)
     if (!items.length) this.fail('分享里没有可转存的内容')
-
     const sourceName = safeName(
       detail.data?.share?.title ||
       detail.data?.title ||
@@ -388,7 +398,72 @@ export class QuarkProvider extends Provider {
       link.key,
       link.key
     )
-    const job = await this.transferFolder(account, targetPath, sourceName)
+    return { pwdId, stoken, items, sourceName }
+  }
+
+  async inspectShare(account, link, passcode) {
+    const context = await this.shareContext(account, link, passcode)
+    const items = []
+    const queue = [{
+      parentFid: '0',
+      basePath: '',
+      rows: context.items,
+      depth: 0
+    }]
+
+    while (queue.length && items.length < 2000) {
+      const current = queue.shift()
+      for (const item of current.rows) {
+        const name = String(item.file_name || item.name || '未命名')
+        const path = `${current.basePath}/${name}` || '/'
+        const type = item.dir ? 'dir' : 'file'
+        items.push({
+          name,
+          path,
+          type,
+          size: Number(item.size || item.file_size || 0),
+          mtime: timestamp(item.updated_at || item.created_at)
+        })
+        if (item.dir && current.depth < 8 && items.length < 2000) {
+          const childFid = item.share_fid || item.fid
+          if (!childFid) continue
+          const detail = await this.call(account, 'GET',
+            'https://drive-pc.quark.cn/1/clouddrive/share/sharepage/detail?' + new URLSearchParams({
+              pr: 'ucpro',
+              fr: 'pc',
+              pwd_id: context.pwdId,
+              stoken: context.stoken,
+              pdir_fid: String(childFid),
+              _page: '1',
+              _size: '100'
+            }))
+          queue.push({
+            parentFid: String(childFid),
+            basePath: path,
+            rows: (detail.data?.list || []).filter((x) => x.dir || x.file),
+            depth: current.depth + 1
+          })
+        }
+      }
+    }
+
+    return {
+      title: context.sourceName,
+      signature: shareSignature(context.sourceName, items),
+      items
+    }
+  }
+
+  async transfer(account, link, passcode, targetPath = '/') {
+    this.needCookie(account)
+    const context = await this.shareContext(account, link, passcode)
+    const { pwdId, stoken, items, sourceName } = context
+    const job = await this.transferFolder(
+      account,
+      targetPath,
+      sourceName,
+      link.syncMode === true
+    )
     const jobPath = job.path
     const targetFid = job.fid
     const saved = await this.call(account, 'POST', this.saveEndpoint(), {

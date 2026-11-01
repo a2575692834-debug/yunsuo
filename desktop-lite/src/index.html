@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'none';" />
+  <title>云梭桌面端</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="paper-noise"></div>
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
+
+  <header class="appbar">
+    <div class="brand">
+      <span class="brand-mark">梭</span>
+      <div class="brand-copy">
+        <strong>云梭桌面端</strong>
+        <span>YUNSUO · FULL EDITION</span>
+      </div>
+    </div>
+    <div class="top-status">
+      <div id="connectionBadge" class="connection-badge" hidden>
+        <i></i>
+        <span id="badgeText">已保存登录</span>
+      </div>
+      <span class="version">V1.1.1 · WINDOWS</span>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="story">
+      <div class="story-copy">
+        <div class="kicker"><span>01</span> SIGN IN ONCE · WORK LOCALLY</div>
+        <h1 class="display">登录一次，<br><em>整站上桌。</em></h1>
+        <p class="lead">完整云梭在桌面内打开。账号登录一次，Token 经 Windows 安全存储加密保存；下次启动自动进入，不必再复制 CK。</p>
+      </div>
+
+      <div class="capabilities">
+        <article>
+          <span>01</span>
+          <div>
+            <strong>完整功能</strong>
+            <p>概览、转存、账号、任务、分享库、空间、监控与管理员后台。</p>
+          </div>
+        </article>
+        <article>
+          <span>02</span>
+          <div>
+            <strong>安全会话</strong>
+            <p>仅保存账号与加密 Token，不保存你的站点密码。</p>
+          </div>
+        </article>
+        <article>
+          <span>03</span>
+          <div>
+            <strong>双模式监控</strong>
+            <p>云端 7×24 运行；本地监控由桌面端在线时驱动。</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="monitor-visual" aria-hidden="true">
+        <div class="orbit orbit-cloud">
+          <span>云</span>
+          <i></i>
+          <b>CLOUD</b>
+        </div>
+        <div class="signal">
+          <i></i><i></i><i></i>
+        </div>
+        <div class="orbit orbit-local">
+          <span>本</span>
+          <i></i>
+          <b>LOCAL</b>
+        </div>
+      </div>
+    </section>
+
+    <section class="login-panel">
+      <div class="panel-grid">
+        <form id="loginForm" class="login-card" autocomplete="on">
+          <div class="card-label">
+            <span>YUNSUO ACCOUNT</span>
+            <i></i>
+            <span>ENCRYPTED TOKEN</span>
+          </div>
+
+          <div class="title-row">
+            <div>
+              <h2 class="display">进入你的云梭</h2>
+              <p>使用你在部署站点注册的账号登录。</p>
+            </div>
+            <span class="edition-seal">完整<br>版</span>
+          </div>
+
+          <label class="field">
+            <span>登录地址</span>
+            <div class="input-shell">
+              <span class="field-icon">↗</span>
+              <input id="baseUrlInput" type="text" inputmode="url" autocomplete="url" placeholder="https://你的域名" spellcheck="false" />
+            </div>
+          </label>
+
+          <label class="server-verify">
+            <span class="verify-copy">
+              <strong>登录前验证服务器</strong>
+              <small>默认直接登录；开启后先检查服务器是否在线</small>
+            </span>
+            <input id="verifyServerToggle" type="checkbox" />
+            <span class="verify-switch" aria-hidden="true"><i></i></span>
+          </label>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>账号</span>
+              <div class="input-shell">
+                <span class="field-icon">人</span>
+                <input id="usernameInput" type="text" autocomplete="username" placeholder="用户名" spellcheck="false" />
+              </div>
+            </label>
+
+            <label class="field">
+              <span>密码</span>
+              <div class="input-shell">
+                <span class="field-icon">钥</span>
+                <input id="passwordInput" type="password" autocomplete="current-password" placeholder="登录密码" />
+                <button id="togglePassword" class="inside-button" type="button">显示</button>
+              </div>
+            </label>
+          </div>
+
+          <p id="loginError" class="form-error" hidden></p>
+
+          <button id="loginButton" class="primary-button" type="submit">
+            <span>登录并打开完整版</span>
+            <b>→</b>
+          </button>
+
+          <div class="login-divider"><span>或</span></div>
+
+          <button id="webLoginButton" class="secondary-button" type="button">
+            <span>打开站点登录 / 注册</span>
+            <b>↗</b>
+          </button>
+
+          <p class="secure-note">
+            <span>◇</span>
+            密码只用于本次登录请求，不会保存在本机。登录成功后才加密同步 Token。
+          </p>
+
+          <div class="session-flow" aria-label="登录流程">
+            <div><b>01</b><span>验证账号</span></div>
+            <i>→</i>
+            <div><b>02</b><span>加密 Token</span></div>
+            <i>→</i>
+            <div><b>03</b><span>自动进入</span></div>
+          </div>
+        </form>
+
+        <aside id="resumePanel" class="resume-card" hidden>
+          <div class="saved-orbit"><i></i><span>梭</span></div>
+          <span class="resume-kicker">SAVED SESSION</span>
+          <h3 class="display">已保存登录</h3>
+          <p id="savedUserLabel">可直接进入完整版；Token 已通过系统安全存储加密。</p>
+          <button id="resumeButton" class="resume-button" type="button">
+            直接进入完整版 <b>→</b>
+          </button>
+          <button id="clearTokenButton" class="quiet-button" type="button">清除本机登录</button>
+          <div class="resume-foot">
+            <i></i>
+            本地监控会在完整版打开时自动接管
+          </div>
+        </aside>
+      </div>
+
+      <footer class="panel-foot">
+        <span>PRIVATE BY DESIGN</span>
+        <span class="foot-line"></span>
+        <span>Token 不会以明文落盘</span>
+      </footer>
+    </section>
+  </main>
+
+  <div id="toastHost" class="toast-host"></div>
+  <script src="./renderer.js"></script>
+</body>
+</html>

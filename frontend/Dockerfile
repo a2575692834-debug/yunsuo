@@ -1,5 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
+ARG VITE_DESKTOP_DOWNLOAD_URL=
+ENV VITE_DESKTOP_DOWNLOAD_URL=$VITE_DESKTOP_DOWNLOAD_URL
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

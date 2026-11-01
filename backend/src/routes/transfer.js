@@ -1,34 +1,15 @@
 import { Router } from 'express'
 import { authRequired } from '../auth.js'
 import { parseMany, parseOne } from '../utils/parse.js'
-import { listAccounts, getAccount, insertResource, insertShare, newId } from '../db.js'
+import { listAccounts, getAccount, newId } from '../db.js'
 import { getProvider } from '../providers/index.js'
 import { queue, animatedProgress } from '../queue.js'
 import { resolveShareExpiry, resolveSharePasscode } from '../utils/share.js'
+import { defaultTargetPath, normalizeTargetPath } from '../utils/path.js'
+import { enqueueTransfer } from '../services/transfer-runner.js'
 
 export const transferRouter = Router()
 transferRouter.use(authRequired)
-
-function defaultTargetPath() {
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date())
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
-  return `/转存/${value.year}-${value.month}-${value.day}`
-}
-
-function normalizeTargetPath(value) {
-  let path = String(value || defaultTargetPath()).trim().replace(/\\/g, '/')
-  if (!path) path = '/'
-  if (!path.startsWith('/')) path = '/' + path
-  path = path.replace(/\/+/g, '/').replace(/\/+$/, '')
-  const parts = path.split('/').filter(Boolean)
-  if (parts.includes('..') || /[\0:*?"<>|]/.test(path)) return null
-  return (path || '/').slice(0, 200)
-}
 
 transferRouter.post('/parse', (req, res) => {
   const text = String(req.body?.text || '')
@@ -69,75 +50,28 @@ transferRouter.post('/transfer', async (req, res, next) => {
     const skipped = []
 
     for (const link of links) {
-      const account = fixedAccount || accounts.find((a) => a.provider === link.provider)
+      const account = fixedAccount?.provider === link.provider
+        ? fixedAccount
+        : accounts.find((a) => a.provider === link.provider)
       if (!account) {
         skipped.push({ url: link.url, reason: `还没有添加 ${link.providerName} 账号` })
         continue
       }
-      const provider = getProvider(account.provider)
       const passcode = resolveSharePasscode(requestedPasscode, account.provider)
-      const task = await queue.add(
-        req.user.uid,
-        'transfer',
-        `${link.providerName} · ${link.key}`,
-        {
-          batchId,
-          accountId: account.id,
-          provider: account.provider,
-          url: link.url,
-          targetPath,
-          autoShare
-        },
-        async (api) => {
-          await api.log(`识别为 ${link.providerName} 分享`)
-          await animatedProgress(api, async () => {
-            const saved = await provider.transfer(account, link, link.passcode, targetPath)
-            const sourceName = String(saved.sourceName || link.key).slice(0, 180)
-            await api.rename(`${link.providerName} · ${sourceName}`)
-            await api.log(`转存完成${saved.savedPaths?.length ? ' → ' + saved.savedPaths.join(', ') : ''}`)
-            await insertResource({
-              id: newId('res'),
-              userId: req.user.uid,
-              accountId: account.id,
-              provider: account.provider,
-              title: sourceName,
-              sourceUrl: link.url,
-              sourceCode: link.passcode || '',
-              savedPath: saved.savedPaths?.[0] || targetPath,
-              taskId: api.taskId,
-              batchId,
-              createdAt: Date.now()
-            })
-
-            if (autoShare) {
-              await api.log('正在创建分享链接…')
-              const paths = saved.savedPaths?.length ? saved.savedPaths : [targetPath]
-              const shared = await provider.share(account, paths, {
-                unlimited,
-                expires,
-                passcode,
-                title: sourceName,
-                fids: saved.savedFids || []
-              })
-              const record = await insertShare({
-                id: newId('share'),
-                userId: req.user.uid,
-                accountId: account.id,
-                provider: account.provider,
-                batchId,
-                taskId: api.taskId,
-                title: sourceName,
-                url: shared.url,
-                passcode: shared.passcode,
-                expires: shared.expires ?? expires,
-                createdAt: Date.now()
-              })
-              await api.log(`分享已生成${record.passcode ? ` · 提取码 ${record.passcode}` : ''}: ${record.url}`)
-            }
-          })
-        }
-      )
-      tasks.push(task.id)
+      const queued = await enqueueTransfer({
+        userId: req.user.uid,
+        account,
+        link,
+        targetPath,
+        autoShare,
+        unlimited,
+        expires,
+        sharePasscode: passcode,
+        batchId,
+        titlePrefix: link.providerName,
+        detail: {}
+      })
+      tasks.push(queued.task.id)
     }
 
     res.json({ batchId, tasks, skipped })

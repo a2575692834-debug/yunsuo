@@ -49,7 +49,10 @@ services:
       start_period: 15s
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_DESKTOP_DOWNLOAD_URL: ${DESKTOP_DOWNLOAD_URL:-}
     container_name: yunsuo-frontend
     restart: unless-stopped
     ports:

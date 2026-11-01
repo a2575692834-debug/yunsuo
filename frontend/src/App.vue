@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from './api.js'
 import { store, clearSession, setSession, setTheme, themes } from './store.js'
+import { notify } from './toast.js'
 import ToastHost from './components/ToastHost.vue'
 import AuthView from './views/AuthView.vue'
 import DashboardView from './views/DashboardView.vue'
@@ -11,16 +12,17 @@ import TasksView from './views/TasksView.vue'
 import SharesView from './views/SharesView.vue'
 import FilesView from './views/FilesView.vue'
 import AdminView from './views/AdminView.vue'
-import PublicView from './views/PublicView.vue'
+import MonitorsView from './views/MonitorsView.vue'
+import DesktopGuideModal from './components/DesktopGuideModal.vue'
 
 const nav = [
   { key: 'dashboard', label: '概览', sub: 'OVERVIEW', icon: '◒' },
-  { key: 'public', label: '公开资源', sub: 'DISCOVER', icon: '⌁' },
   { key: 'transfer', label: '智能转存', sub: 'TRANSFER', icon: '⇄' },
   { key: 'accounts', label: '网盘账号', sub: 'ACCOUNTS', icon: '◎' },
   { key: 'tasks', label: '任务中心', sub: 'TASKS', icon: '≋' },
   { key: 'shares', label: '分享库', sub: 'SHARES', icon: '↗' },
-  { key: 'files', label: '我的空间', sub: 'FILES', icon: '▤' }
+  { key: 'files', label: '我的空间', sub: 'FILES', icon: '▤' },
+  { key: 'monitors', label: '链接监控', sub: 'MONITORS', icon: '◎' }
 ]
 
 const adminNav = { key: 'admin', label: '管理后台', sub: 'ADMIN', icon: '◆', admin: true }
@@ -33,8 +35,8 @@ const views = {
   tasks: TasksView,
   shares: SharesView,
   files: FilesView,
-  public: PublicView,
-  admin: AdminView
+  admin: AdminView,
+  monitors: MonitorsView
 }
 
 const currentView = computed(() => {
@@ -45,18 +47,24 @@ const currentNav = computed(() => visibleNav.value.find((n) => n.key === store.p
 const initial = computed(() => (store.user?.username || '云').slice(0, 1).toUpperCase())
 const themeCurrent = computed(() => themes.find((theme) => theme.id === store.theme) || themes[0])
 const themeOpen = ref(false)
+const tokenCopied = ref(false)
+const desktopGuideOpen = ref(false)
 const loading = ref(false)
 const providerName = (id) => store.providers.find((provider) => provider.id === id)?.name || id
 
 const pageMeta = {
   dashboard: { title: '把云,收拢到一处。', sub: '你的转存、分享与账号,都在这里汇合。' },
-  public: { title: '去公开资源里,发现下一份收藏。', sub: '搜索大家已经生成的公开分享链接。' },
   transfer: { title: '让链接,抵达你的网盘。', sub: '粘贴分享文案,自动识别百度 / 夸克 / 迅雷。' },
   accounts: { title: '连接你的每一朵云。', sub: '扫码登录,或手动粘贴 Cookie。' },
   tasks: { title: '每一次搬运,都有迹可循。', sub: '实时进度、日志与取消。' },
   shares: { title: '分享,是云的第二次生命。', sub: '管理转存后生成的分享链接。' },
   files: { title: '你的空间,一目了然。', sub: '浏览账号里的文件与目录。' },
   admin: { title: '全站动向,尽在掌握。', sub: '管理员专属 · 用户、转存与分享全局视图。' }
+}
+
+const monitorMeta = {
+  title: '盯着链接,资源一变就搬进来。',
+  sub: '把分享链接交给云梭,按设定间隔巡检,内容更新自动转存并重新分享。'
 }
 
 async function loadBootstrap() {
@@ -97,6 +105,38 @@ function onAuth() {
 function chooseTheme(id) {
   setTheme(id)
   themeOpen.value = false
+}
+
+async function copyDesktopToken() {
+  if (!store.token) {
+    notify('当前没有可复制的登录 Token', 'error')
+    return
+  }
+
+  let copied = false
+  try {
+    await navigator.clipboard.writeText(store.token)
+    copied = true
+  } catch {
+    const field = document.createElement('textarea')
+    field.value = store.token
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.opacity = '0'
+    document.body.appendChild(field)
+    field.select()
+    copied = document.execCommand('copy')
+    field.remove()
+  }
+
+  if (!copied) {
+    notify('复制失败，请检查浏览器剪贴板权限', 'error')
+    return
+  }
+
+  tokenCopied.value = true
+  notify('登录 Token 已复制，可用于备用登录', 'success')
+  setTimeout(() => { tokenCopied.value = false }, 1800)
 }
 
 watch(() => store.page, (page) => {
@@ -201,6 +241,19 @@ onMounted(() => {
           <select v-if="store.accounts.length" v-model="store.activeAccountId" class="select account-select">
             <option v-for="a in store.accounts" :key="a.id" :value="a.id">{{ a.label }} · {{ providerName(a.provider) }}</option>
           </select>
+          <button class="desktop-entry" title="下载桌面客户端并查看使用说明" @click="desktopGuideOpen = true">
+            <span class="desktop-entry-icon">↓</span>
+            <span class="desktop-entry-label">桌面端</span>
+          </button>
+          <button
+            class="token-copy"
+            :class="{ copied: tokenCopied }"
+            title="复制登录 Token（备用）"
+            @click="copyDesktopToken"
+          >
+            <span class="token-copy-icon">{{ tokenCopied ? '✓' : '⌁' }}</span>
+            <span class="token-copy-label">{{ tokenCopied ? '已复制' : '复制 Token' }}</span>
+          </button>
           <button class="btn btn-ghost" @click="loadBootstrap">刷新</button>
         </div>
       </header>
@@ -208,8 +261,8 @@ onMounted(() => {
       <main class="main">
         <div class="page-head">
           <div>
-            <h1 class="display">{{ pageMeta[store.page]?.title }}</h1>
-            <p class="muted">{{ pageMeta[store.page]?.sub }}</p>
+            <h1 class="display">{{ (store.page === 'monitors' ? monitorMeta : pageMeta[store.page])?.title }}</h1>
+            <p class="muted">{{ (store.page === 'monitors' ? monitorMeta : pageMeta[store.page])?.sub }}</p>
           </div>
           <div class="head-mark mono">{{ String(visibleNav.findIndex(n => n.key === store.page) + 1).padStart(2, '0') }} / {{ String(visibleNav.length).padStart(2, '0') }}</div>
         </div>
@@ -225,6 +278,7 @@ onMounted(() => {
     </div>
 
   </div>
+  <DesktopGuideModal v-model="desktopGuideOpen" />
   <ToastHost />
 </template>
 
@@ -388,6 +442,46 @@ onMounted(() => {
 .theme-menu-enter-active, .theme-menu-leave-active { transition: opacity .18s ease, transform .24s cubic-bezier(.2,.8,.2,1); }
 .theme-menu-enter-from, .theme-menu-leave-to { opacity: 0; transform: translateY(-7px) scale(.96); }
 .account-select { width: 220px; padding: 8px 12px; font-size: 12px; border-radius: 999px; }
+.desktop-entry {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px 0 7px;
+  border: 1px solid rgba(15,118,110,.18);
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform .2s, border-color .2s, background .2s;
+}
+.desktop-entry:hover { transform: translateY(-1px); border-color: rgba(15,118,110,.34); background: rgba(15,118,110,.14); }
+.desktop-entry-icon {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255,253,248,.72);
+  font-size: 13px;
+}
+.token-copy {
+  height: 38px; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 12px 0 7px; border: 1px solid rgba(239,84,56,.2); border-radius: 999px;
+  background: var(--coral-soft); color: var(--coral); cursor: pointer;
+  font-size: 10px; font-weight: 800; white-space: nowrap;
+  transition: transform .2s, border-color .2s, background .2s, color .2s;
+}
+.token-copy:hover { transform: translateY(-1px); border-color: rgba(239,84,56,.38); background: rgba(239,84,56,.16); }
+.token-copy.copied { border-color: rgba(15,118,110,.28); background: var(--teal-soft); color: var(--teal); }
+.token-copy-icon {
+  width: 25px; height: 25px; display: grid; place-items: center;
+  border-radius: 50%; background: rgba(255,253,248,.7); font-family: var(--mono); font-size: 12px;
+}
+.token-copy.copied .token-copy-icon { color: var(--teal); }
 .main { position: relative; padding: 30px 34px 48px; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
 .page-head h1 { font-size: clamp(28px, 3vw, 42px); line-height: 1.16; margin: 0 0 8px; }
@@ -424,6 +518,10 @@ onMounted(() => {
   .nav-copy strong { font-size: 10px; }
   .topbar { height: 60px; padding: 0 14px; }
   .top-actions .btn { display: none; }
+  .token-copy { width: 38px; padding: 0; justify-content: center; }
+  .token-copy-label { display: none; }
+  .desktop-entry { width: 38px; padding: 0; justify-content: center; }
+  .desktop-entry-label { display: none; }
   .theme-trigger { width: 38px; padding: 0; justify-content: center; }
   .theme-trigger > span:nth-child(2), .theme-trigger b { display: none; }
   .theme-menu { right: -56px; width: 250px; }

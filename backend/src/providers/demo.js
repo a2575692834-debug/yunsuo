@@ -1,5 +1,6 @@
 import { Provider } from './base.js'
 import { newId, getDemoTree, saveDemoTree } from '../db.js'
+import { shareSignature } from './fingerprint.js'
 
 const MB = 1024 * 1024
 
@@ -181,18 +182,40 @@ export class DemoProvider extends Provider {
     const tree = await this.tree(account)
     const parent = ensureDir(tree, targetPath)
     const name = (link.key || '转存内容').slice(0, 24)
-    parent.children.push({
+    const item = {
       type: 'dir',
       name,
       children: [
         { type: 'file', name: `${name}_高清版.mp4`, size: 860 * MB, mtime: Date.now() },
         { type: 'file', name: `${name}_说明.pdf`, size: 3 * MB, mtime: Date.now() }
       ]
-    })
+    }
+    const existing = link.syncMode && parent.children.find((child) => child.name === name)
+    if (existing && existing.type !== 'dir') {
+      this.fail(`无法同步到固定目录: ${targetPath}/${name} 已被同名文件占用`)
+    }
+    if (existing) {
+      existing.children = item.children
+    } else {
+      parent.children.push(item)
+    }
     await saveDemoTree(account.id, tree)
     return {
       sourceName: name,
       savedPaths: [(targetPath === '/' ? '' : targetPath) + '/' + name]
+    }
+  }
+
+  async inspectShare(account, link) {
+    const name = (link.key || '演示资源').slice(0, 24)
+    const items = [
+      { name: `${name}_高清版.mp4`, path: `/${name}/${name}_高清版.mp4`, type: 'file', size: 860 * MB },
+      { name: `${name}_说明.pdf`, path: `/${name}/${name}_说明.pdf`, type: 'file', size: 3 * MB }
+    ]
+    return {
+      title: name,
+      signature: shareSignature(name, items),
+      items
     }
   }
 

@@ -34,6 +34,7 @@ export class Provider {
   async mkdir() { this.notReady('新建文件夹') }
   async transfer() { this.notReady('转存') }
   async share() { this.notReady('创建分享') }
+  async inspectShare() { this.notReady('链接监控') }
   async search() { return [] }
 
   operations() {

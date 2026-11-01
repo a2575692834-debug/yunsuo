@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https:; connect-src 'none';" />
+  <title>云梭本地版</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <div class="grain"></div>
+
+  <div id="app" class="app" data-theme="paper">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">梭</span>
+        <span class="brand-copy">
+          <strong>云梭</strong>
+          <small>LOCAL EDITION</small>
+        </span>
+      </div>
+
+      <div class="local-pass">
+        <span class="pulse"><i></i></span>
+        <span>
+          <strong>本机独立运行</strong>
+          <small>不连接云梭服务器</small>
+        </span>
+      </div>
+
+      <nav id="mainNav" class="main-nav" aria-label="主导航">
+        <button class="nav-item is-active" data-view="dashboard">
+          <span class="nav-glyph">⌂</span><span>总览</span><b>01</b>
+        </button>
+        <button class="nav-item" data-view="transfer">
+          <span class="nav-glyph">↗</span><span>智能转存</span><b>02</b>
+        </button>
+        <button class="nav-item" data-view="accounts">
+          <span class="nav-glyph">云</span><span>网盘账号</span><b>03</b>
+        </button>
+        <button class="nav-item" data-view="files">
+          <span class="nav-glyph">▤</span><span>我的文件</span><b>04</b>
+        </button>
+        <button class="nav-item" data-view="shares">
+          <span class="nav-glyph">链</span><span>分享库</span><b>05</b>
+        </button>
+        <button class="nav-item" data-view="monitors">
+          <span class="nav-glyph">◎</span><span>链接监控</span><b>06</b>
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span class="nav-glyph">调</span><span>本地设置</span><b>07</b>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="privacy-lock"><span>◇</span><p>Cookie 仅以 Windows 安全存储加密保存在本机。</p></div>
+        <button id="openDataSidebar" class="data-link">打开本地数据目录 <span>↗</span></button>
+        <span id="appVersion" class="version">LOCAL V1.0.0</span>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="page-heading">
+          <span id="pageIndex" class="page-index">01 / OVERVIEW</span>
+          <h1 id="pageTitle">你的网盘工作台</h1>
+          <p id="pageSubtitle">所有数据都在这台电脑上，不需要账号，也不需要登录服务器。</p>
+        </div>
+        <div class="top-actions">
+          <div class="offline-pill"><i></i><span>完全本地</span></div>
+          <button class="btn btn-ghost" data-view="settings">主题与设置</button>
+          <button class="btn btn-primary" data-view="transfer">开始转存 <b>→</b></button>
+        </div>
+      </header>
+
+      <div class="view-stack">
+        <section id="view-dashboard" class="view-panel is-active" data-panel="dashboard">
+          <div class="hero-grid">
+            <article class="hero-card">
+              <div class="hero-orbit" aria-hidden="true">
+                <i></i><i></i><i></i><span>梭</span>
+              </div>
+              <div class="hero-content">
+                <span class="eyebrow">PRIVATE TRANSFER DESK</span>
+                <h2>把散落的链接，<br><em>收进自己的网盘。</em></h2>
+                <p>粘贴一整段分享文案，自动识别百度、夸克和迅雷。转存、创建分享、复制结果，一次完成。</p>
+                <div class="hero-actions">
+                  <button class="btn btn-coral" data-view="transfer">智能转存 <b>↗</b></button>
+                  <button class="btn btn-light" data-view="accounts">连接网盘账号</button>
+                </div>
+              </div>
+              <div class="hero-stamp">
+                <span>LOCAL</span>
+                <strong>ONLY</strong>
+                <small>NO LOGIN</small>
+              </div>
+            </article>
+
+            <article class="quick-card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">QUICK CAPTURE</span>
+                  <h3>快速粘贴</h3>
+                </div>
+                <span class="mini-chip">支持多链接</span>
+              </div>
+              <textarea id="dashboardPaste" class="paste-mini" placeholder="把网盘分享文案粘贴到这里…"></textarea>
+              <div class="quick-foot">
+                <span><i></i> 自动识别提取码</span>
+                <button id="dashboardParse" class="round-arrow" title="去智能转存">→</button>
+              </div>
+            </article>
+          </div>
+
+          <div id="statGrid" class="stat-grid"></div>
+
+          <div class="dashboard-bottom">
+            <article class="panel recent-panel">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">RECENT ACTIVITY</span>
+                  <h3>最近记录</h3>
+                </div>
+                <button class="text-button" data-view="shares">查看分享库 →</button>
+              </div>
+              <div id="recentActivity" class="activity-list"></div>
+            </article>
+
+            <article class="panel account-overview">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">ACCOUNT STATUS</span>
+                  <h3>账号状态</h3>
+                </div>
+                <button class="text-button" data-view="accounts">管理账号 →</button>
+              </div>
+              <div id="dashboardAccounts" class="account-mini-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="view-transfer" class="view-panel" data-panel="transfer">
+          <div class="transfer-layout">
+            <article class="panel transfer-input-panel">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">SMART TRANSFER</span>
+                  <h2>粘贴，识别，转存。</h2>
+                  <p>一段文案里可以同时包含多个网盘链接，有无提取码都可以。</p>
+                </div>
+                <span id="parsedCount" class="count-badge">0 个链接</span>
+              </div>
+              <textarea id="smartText" class="smart-paste" spellcheck="false" placeholder="粘贴百度 / 夸克 / 迅雷分享文案…&#10;&#10;例如：&#10;链接：https://pan.quark.cn/s/xxxxxx&#10;提取码：8888"></textarea>
+              <div class="paste-toolbar">
+                <button id="pasteFromClipboard" class="soft-button" type="button">从剪贴板粘贴</button>
+                <button id="clearSmartText" class="soft-button" type="button">清空</button>
+                <span><i></i> 本地正则识别，不上传文案</span>
+              </div>
+              <div id="parsedLinks" class="parsed-links">
+                <div class="empty-inline">等待粘贴分享文案</div>
+              </div>
+            </article>
+
+            <aside class="transfer-settings">
+              <article class="panel settings-card">
+                <div class="section-head compact">
+                  <div>
+                    <span class="eyebrow">TRANSFER OPTIONS</span>
+                    <h3>转存设置</h3>
+                  </div>
+                </div>
+
+                <label class="field">
+                  <span>转存目录</span>
+                  <div class="input-line">
+                    <b>⌂</b>
+                    <input id="smartTarget" type="text" spellcheck="false" placeholder="/2026-11-01" />
+                  </div>
+                  <small>留空时自动按当天日期创建目录</small>
+                </label>
+
+                <div class="option-row">
+                  <div>
+                    <strong>转存后创建分享</strong>
+                    <small>自动生成可复制的分享链接</small>
+                  </div>
+                  <label class="switch">
+                    <input id="smartAutoShare" type="checkbox" checked />
+                    <span><i></i></span>
+                  </label>
+                </div>
+
+                <div id="shareOptions" class="share-options">
+                  <label class="field">
+                    <span>分享有效期</span>
+                    <select id="smartExpiry">
+                      <option value="0">永久有效</option>
+                      <option value="1">1 天</option>
+                      <option value="7">7 天</option>
+                      <option value="30">30 天</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>默认提取码</span>
+                    <input id="smartPasscode" class="code-input" type="text" maxlength="4" spellcheck="false" placeholder="8888" />
+                    <small>夸克分享默认无提取码</small>
+                  </label>
+                </div>
+
+                <button id="runTransfer" class="btn btn-primary btn-block">开始本批转存 <b>→</b></button>
+              </article>
+
+              <article class="panel progress-card">
+                <div class="progress-head">
+                  <span id="progressTitle">等待任务</span>
+                  <b id="progressPercent">0%</b>
+                </div>
+                <div class="progress-track"><i id="progressBar"></i></div>
+                <div id="progressLogs" class="progress-logs">
+                  <p>粘贴链接后，进度会显示在这里。</p>
+                </div>
+              </article>
+            </aside>
+          </div>
+
+          <article id="transferResultsPanel" class="panel results-panel" hidden>
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">BATCH RESULTS</span>
+                <h2>本批结果</h2>
+                <p id="resultSummary"></p>
+              </div>
+              <div class="result-actions">
+                <button id="copyBatchText" class="soft-button">复制文案</button>
+                <button id="exportTxt" class="soft-button">TXT</button>
+                <button id="exportCsv" class="soft-button">CSV</button>
+                <button id="exportMd" class="soft-button">MD</button>
+              </div>
+            </div>
+            <div id="transferResults" class="result-list"></div>
+          </article>
+        </section>
+
+        <section id="view-accounts" class="view-panel" data-panel="accounts">
+          <div id="providerConnectGrid" class="provider-grid"></div>
+          <article class="panel accounts-panel">
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">CONNECTED ACCOUNTS</span>
+                <h2>已连接账号</h2>
+                <p>可同时保存多个 Cookie；转存时优先使用同网盘的第一个可用账号。</p>
+              </div>
+              <button id="refreshAllUsage" class="soft-button">刷新容量</button>
+            </div>
+            <div id="accountsList" class="accounts-list"></div>
+          </article>
+        </section>
+
+        <section id="view-files" class="view-panel" data-panel="files">
+          <article class="panel files-panel">
+            <div class="files-toolbar">
+              <div class="field inline-field">
+                <span>网盘账号</span>
+                <select id="filesAccount"></select>
+              </div>
+              <button id="filesHome" class="soft-button">根目录</button>
+              <div class="file-search">
+                <input id="fileSearchInput" type="text" placeholder="搜索当前网盘文件…" />
+                <button id="fileSearchButton">搜索</button>
+              </div>
+              <div class="toolbar-spacer"></div>
+              <button id="mkdirButton" class="soft-button">新建文件夹</button>
+              <button id="copyFilesButton" class="soft-button">复制</button>
+              <button id="moveFilesButton" class="soft-button">移动</button>
+            </div>
+            <div id="fileBreadcrumb" class="file-breadcrumb">/</div>
+            <div class="file-table-head">
+              <span>名称</span><span>大小</span><span>修改时间</span><span>操作</span>
+            </div>
+            <div id="fileList" class="file-list"></div>
+          </article>
+        </section>
+
+        <section id="view-shares" class="view-panel" data-panel="shares">
+          <article class="panel shares-panel">
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">SHARE LIBRARY</span>
+                <h2>分享库</h2>
+                <p id="shareLibrarySummary">本机生成过的分享会保存在这里。</p>
+              </div>
+              <div class="result-actions">
+                <select id="shareProviderFilter">
+                  <option value="">全部网盘</option>
+                  <option value="baidu">百度网盘</option>
+                  <option value="quark">夸克网盘</option>
+                  <option value="xunlei">迅雷网盘</option>
+                </select>
+                <button id="copyAllShares" class="soft-button">复制全部</button>
+              </div>
+            </div>
+            <div id="shareList" class="share-list"></div>
+          </article>
+        </section>
+
+        <section id="view-monitors" class="view-panel" data-panel="monitors">
+          <div class="monitor-layout">
+            <article class="panel monitor-create">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">LINK WATCH</span>
+                  <h2>新建链接监控</h2>
+                  <p>资源更新后自动同步到你的网盘。仅在云梭本地版运行时检查。</p>
+                </div>
+              </div>
+              <label class="field">
+                <span>分享链接</span>
+                <div class="input-line"><b>∞</b><input id="monitorUrl" type="text" spellcheck="false" placeholder="https://pan.quark.cn/s/…" /></div>
+              </label>
+              <div class="form-grid">
+                <label class="field">
+                  <span>使用账号</span>
+                  <select id="monitorAccount"></select>
+                </label>
+                <label class="field">
+                  <span>检查间隔</span>
+                  <select id="monitorInterval">
+                    <option value="5">每 5 分钟</option>
+                    <option value="15">每 15 分钟</option>
+                    <option value="30" selected>每 30 分钟</option>
+                    <option value="60">每 1 小时</option>
+                    <option value="360">每 6 小时</option>
+                    <option value="1440">每天</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label class="field">
+                  <span>原链接提取码</span>
+                  <input id="monitorPasscode" type="text" maxlength="4" spellcheck="false" placeholder="可选" />
+                </label>
+                <label class="field">
+                  <span>同步目录</span>
+                  <input id="monitorTarget" type="text" spellcheck="false" placeholder="留空使用当天日期" />
+                </label>
+              </div>
+              <div class="form-grid">
+                <label class="field">
+                  <span>同步后提取码</span>
+                  <input id="monitorSharePasscode" class="code-input" type="text" maxlength="4" value="8888" />
+                </label>
+                <label class="check-field">
+                  <input id="monitorAutoShare" type="checkbox" checked />
+                  <span><strong>同步后创建分享</strong><small>为增量资源生成新分享链接</small></span>
+                </label>
+              </div>
+              <button id="addMonitor" class="btn btn-primary btn-block">创建监控 <b>＋</b></button>
+            </article>
+
+            <article class="panel monitor-list-panel">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">WATCHING</span>
+                  <h2>监控任务</h2>
+                </div>
+                <span id="monitorCount" class="count-badge">0 个</span>
+              </div>
+              <div class="monitor-note"><i></i> 本地版关闭后监控暂停，下次启动会继续检查。</div>
+              <div id="monitorList" class="monitor-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view-panel" data-panel="settings">
+          <div class="settings-layout">
+            <article class="panel theme-panel">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">APPEARANCE</span>
+                  <h2>主题风格</h2>
+                  <p>选择一套适合当前桌面的视觉语言。</p>
+                </div>
+              </div>
+              <div id="themeGrid" class="theme-grid">
+                <button class="theme-option" data-theme-choice="paper"><span class="theme-preview paper"><i></i><b></b></span><strong>纸墨朱砂</strong><small>暖白 · 朱红 · 松绿</small></button>
+                <button class="theme-option" data-theme-choice="jade"><span class="theme-preview jade"><i></i><b></b></span><strong>青岚</strong><small>竹青 · 米纸 · 墨色</small></button>
+                <button class="theme-option" data-theme-choice="amber"><span class="theme-preview amber"><i></i><b></b></span><strong>玄金</strong><small>炭黑 · 琥珀 · 象牙</small></button>
+                <button class="theme-option" data-theme-choice="night"><span class="theme-preview night"><i></i><b></b></span><strong>夜航</strong><small>深海 · 青蓝 · 珊瑚</small></button>
+              </div>
+            </article>
+
+            <article class="panel preference-panel">
+              <div class="section-head">
+                <div>
+                  <span class="eyebrow">DEFAULTS</span>
+                  <h2>转存偏好</h2>
+                </div>
+              </div>
+              <label class="field">
+                <span>默认转存目录</span>
+                <select id="defaultTargetMode">
+                  <option value="today">按当天日期自动创建</option>
+                  <option value="custom">固定目录</option>
+                </select>
+              </label>
+              <label id="customTargetField" class="field" hidden>
+                <span>固定目录</span>
+                <input id="customTargetPath" type="text" spellcheck="false" placeholder="/我的转存" />
+              </label>
+              <div class="form-grid">
+                <label class="field">
+                  <span>默认提取码</span>
+                  <input id="defaultPasscode" class="code-input" type="text" maxlength="4" value="8888" />
+                </label>
+                <label class="field">
+                  <span>默认分享有效期</span>
+                  <select id="defaultExpiry">
+                    <option value="0">永久有效</option>
+                    <option value="1">1 天</option>
+                    <option value="7">7 天</option>
+                    <option value="30">30 天</option>
+                  </select>
+                </label>
+              </div>
+              <button id="savePreferences" class="btn btn-primary btn-block">保存偏好 <b>→</b></button>
+            </article>
+
+            <article class="panel about-panel">
+              <div class="about-mark">梭</div>
+              <div>
+                <span class="eyebrow">ABOUT LOCAL EDITION</span>
+                <h2>云梭本地版</h2>
+                <p id="aboutVersion">VERSION 1.0.0</p>
+              </div>
+              <dl>
+                <div><dt>运行模式</dt><dd>独立桌面程序</dd></div>
+                <div><dt>云梭服务器</dt><dd class="ok-text">不连接</dd></div>
+                <div><dt>账号登录</dt><dd class="ok-text">无需登录</dd></div>
+                <div><dt>凭据保护</dt><dd>Windows 安全存储</dd></div>
+              </dl>
+              <button id="openDataButton" class="soft-button">打开本地数据目录</button>
+            </article>
+
+            <article class="panel privacy-panel">
+              <span class="eyebrow">PRIVACY</span>
+              <h2>数据边界</h2>
+              <p>本程序不会连接任何云梭服务器。只有在执行登录二维码、容量读取、转存、分享、文件操作或监控时，才会由本机直接访问对应网盘官方接口。</p>
+              <div class="privacy-diagram">
+                <span>本机数据库</span><i>⇄</i><span>百度 / 夸克 / 迅雷</span>
+                <b>没有中间服务器</b>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="dialogOverlay" class="dialog-overlay" hidden>
+    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <header>
+        <div>
+          <span id="dialogEyebrow" class="eyebrow">YUNSUO LOCAL</span>
+          <h3 id="dialogTitle">操作</h3>
+        </div>
+        <button id="dialogClose" class="dialog-close" type="button">×</button>
+      </header>
+      <div id="dialogBody" class="dialog-body"></div>
+      <footer id="dialogFooter">
+        <button id="dialogCancel" class="soft-button" type="button">取消</button>
+        <button id="dialogConfirm" class="btn btn-primary" type="button">确认</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="qrOverlay" class="dialog-overlay" hidden>
+    <div class="qr-card" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+      <div class="qr-art">
+        <span class="eyebrow">SCAN TO CONNECT</span>
+        <h3 id="qrTitle">扫码登录网盘</h3>
+        <div class="qr-frame">
+          <img id="qrImage" alt="网盘登录二维码" />
+          <div id="qrLoading" class="qr-loading"><i></i><span>正在生成二维码</span></div>
+        </div>
+        <div class="qr-status"><i></i><span id="qrStatusText">请使用对应网盘 App 扫码</span></div>
+      </div>
+      <div class="qr-copy">
+        <span id="qrProviderLabel" class="provider-seal">扫码登录</span>
+        <h4>手机扫一扫，<br>凭据只留在本机。</h4>
+        <p>扫码成功后会自动保存到本地账号列表。本程序不会上传 Cookie，也不会创建云梭账号。</p>
+        <ol>
+          <li><b>01</b><span>打开对应网盘手机 App</span></li>
+          <li><b>02</b><span>扫描左侧二维码</span></li>
+          <li><b>03</b><span>在手机上确认登录</span></li>
+        </ol>
+        <button id="qrCancel" class="soft-button" type="button">取消扫码</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastHost" class="toast-host"></div>
+  <script src="./renderer.js"></script>
+</body>
+</html>

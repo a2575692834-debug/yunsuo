@@ -1,6 +1,7 @@
 import QRCode from 'qrcode'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Provider } from './base.js'
+import { shareSignature } from './fingerprint.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125 Safari/537.36'
 const CLIENT_ID = 'XW5SkOhLDjnOZP7J'
@@ -345,10 +346,19 @@ export class XunleiProvider extends Provider {
     return parentId
   }
 
-  async transferFolder(account, targetPath, desiredName) {
+  async transferFolder(account, targetPath, desiredName, reuseExisting = false) {
     await this.ensureFolder(account, targetPath)
     const children = await this.list(account, targetPath)
     const base = safeName(desiredName)
+    if (reuseExisting) {
+      const existing = children.find((x) => x.name === base)
+      if (existing && existing.type !== 'dir') {
+        this.fail(`无法同步到固定目录: ${joinPath(targetPath, base)} 已被同名文件占用`)
+      }
+      const path = joinPath(targetPath, base)
+      await this.ensureFolder(account, path)
+      return path
+    }
     let name = base
     for (let i = 2; i < 100 && children.some((x) => x.name === name); i++) {
       name = `${base} (${i})`
@@ -368,20 +378,51 @@ export class XunleiProvider extends Provider {
     }
   }
 
-  async transfer(account, link, passcode, targetPath = '/') {
+  async shareContext(account, link, passcode) {
     this.needCookie(account)
     const shareId = link.key
     const info = await this.api(account,
       `https://api-pan.xunlei.com/drive/v1/share?share_id=${encodeURIComponent(shareId)}&pass_code=${encodeURIComponent(passcode || '')}`
     )
     const files = info.share?.files || info.files || []
-    const ids = files.map((x) => x.id || x.file_id).filter(Boolean)
-    if (!ids.length) this.fail('迅雷分享中没有可转存的文件')
+    if (!files.length) this.fail('迅雷分享中没有可转存的文件')
     const sourceName = safeName(
       info.share?.title || (files.length === 1 ? files[0].name : '') || link.key,
       link.key
     )
-    const jobPath = await this.transferFolder(account, targetPath, sourceName)
+    return { shareId, info, files, sourceName }
+  }
+
+  async inspectShare(account, link, passcode) {
+    const context = await this.shareContext(account, link, passcode)
+    const items = context.files.slice(0, 2000).map((item) => {
+      const name = String(item.name || item.file_name || '未命名')
+      return {
+        name,
+        path: String(item.path || item.file_path || `/${name}`).replace(/\/+/g, '/'),
+        type: item.kind === 'drive#folder' || item.dir ? 'dir' : 'file',
+        size: Number(item.size || 0),
+        mtime: Number(item.modified_time || item.updated_at || item.created_at || 0)
+      }
+    })
+    return {
+      title: context.sourceName,
+      signature: shareSignature(context.sourceName, items),
+      items
+    }
+  }
+
+  async transfer(account, link, passcode, targetPath = '/') {
+    const context = await this.shareContext(account, link, passcode)
+    const { shareId, files, sourceName } = context
+    const ids = files.map((x) => x.id || x.file_id).filter(Boolean)
+    if (!ids.length) this.fail('迅雷分享中没有可转存的文件')
+    const jobPath = await this.transferFolder(
+      account,
+      targetPath,
+      sourceName,
+      link.syncMode === true
+    )
     const parentId = await this.fileId(account, jobPath)
     await this.api(account, 'https://api-pan.xunlei.com/drive/v1/share/transfer', {
       method: 'POST',

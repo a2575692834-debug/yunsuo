@@ -18,3 +18,11 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+
+/desktop-lite/release/
+/desktop-lite/test/
+/desktop-local/release/
+/desktop-local/test/
+/downloads/*
+!/downloads/README.md
+/frontend/public/downloads/*.exe

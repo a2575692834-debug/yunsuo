@@ -1,4 +1,5 @@
 import { Provider } from './base.js'
+import { shareSignature } from './fingerprint.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125 Safari/537.36'
 const TRANSIENT_NETWORK_CODES = new Set([
@@ -495,10 +496,19 @@ export class BaiduProvider extends Provider {
     return current
   }
 
-  async transferFolder(account, targetPath, desiredName) {
+  async transferFolder(account, targetPath, desiredName, reuseExisting = false) {
     await this.ensureFolder(account, targetPath)
     const children = await this.list(account, targetPath)
     const base = safeName(desiredName)
+    if (reuseExisting) {
+      const existing = children.find((x) => x.name === base)
+      if (existing && existing.type !== 'dir') {
+        this.fail(`无法同步到固定目录: ${joinPath(targetPath, base)} 已被同名文件占用`)
+      }
+      const path = joinPath(targetPath, base)
+      await this.ensureFolder(account, path)
+      return path
+    }
     let name = base
     for (let i = 2; i < 100 && children.some((x) => x.name === name); i++) {
       name = `${base} (${i})`
@@ -528,7 +538,7 @@ export class BaiduProvider extends Provider {
     return null
   }
 
-  async transfer(account, link, passcode, targetPath = '/') {
+  async shareContext(account, link, passcode) {
     this.needCookie(account)
     const surl = baiduSurl(link.key)
     if (!surl) this.fail('百度分享链接格式不正确')
@@ -587,7 +597,98 @@ export class BaiduProvider extends Provider {
       link.key,
       link.key
     )
-    const jobPath = await this.transferFolder(activeAccount, targetPath, sourceName)
+    return {
+      surl,
+      shareid,
+      uk,
+      pageToken: pageToken || this.token(activeAccount),
+      randsk,
+      activeAccount,
+      files,
+      fsIds,
+      sourceName,
+      referer: link.url
+    }
+  }
+
+  async listShareDirectory(context, dir = '', root = false) {
+    const query = new URLSearchParams({
+      shareid: String(context.shareid),
+      from: '0',
+      sekey: '',
+      channel: 'chunlei',
+      web: '5',
+      app_id: '250528',
+      clienttype: '0',
+      _: String(Date.now()),
+      root: root ? '1' : '0',
+      shorturl: context.surl,
+      surl: context.surl,
+      uk: String(context.uk),
+      randsk: context.randsk,
+      bdstoken: context.pageToken
+    })
+    if (!root && dir) query.set('dir', dir)
+    const data = await this.api(context.activeAccount, `https://pan.baidu.com/share/list?${query}`, {
+      headers: { Referer: context.referer }
+    })
+    return Array.isArray(data.list) ? data.list : []
+  }
+
+  async inspectShare(account, link, passcode) {
+    const context = await this.shareContext(account, link, passcode)
+    const items = []
+    const queue = [{
+      dir: '',
+      basePath: '',
+      rows: context.files,
+      root: true,
+      depth: 0
+    }]
+
+    while (queue.length && items.length < 2000) {
+      const current = queue.shift()
+      for (const item of current.rows) {
+        const name = String(item.server_filename || '未命名')
+        const path = String(item.path || `${current.basePath}/${name}`).replace(/\/+/g, '/') || '/'
+        const type = item.isdir ? 'dir' : 'file'
+        items.push({
+          name,
+          path,
+          type,
+          size: Number(item.size || 0),
+          mtime: Number(item.server_mtime || item.server_ctime || 0) * 1000
+        })
+        if (item.isdir && current.depth < 8 && items.length < 2000) {
+          const childRows = await this.listShareDirectory(context, path, false)
+          queue.push({
+            dir: path,
+            basePath: path,
+            rows: childRows,
+            root: false,
+            depth: current.depth + 1
+          })
+        }
+      }
+    }
+
+    return {
+      title: context.sourceName,
+      signature: shareSignature(context.sourceName, items),
+      items
+    }
+  }
+
+  async transfer(account, link, passcode, targetPath = '/') {
+    this.needCookie(account)
+    const context = await this.shareContext(account, link, passcode)
+    const { surl, shareid, uk, pageToken, activeAccount, fsIds, sourceName } = context
+    const jobPath = await this.transferFolder(
+      activeAccount,
+      targetPath,
+      sourceName,
+      link.syncMode === true
+    )
 
     const transferQuery = new URLSearchParams({
       shareid,
@@ -604,11 +705,12 @@ export class BaiduProvider extends Provider {
         method: 'POST',
         headers: this.headers(activeAccount, {
           'Content-Type': 'application/x-www-form-urlencoded',
-          Referer: link.url
+          Referer: context.referer
         }),
         body: new URLSearchParams({
           fsidlist: JSON.stringify(fsIds),
-          path: jobPath
+          path: jobPath,
+          ...(link.syncMode === true ? { ondup: 'newcopy' } : {})
         })
       }
     )

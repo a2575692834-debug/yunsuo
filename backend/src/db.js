@@ -68,6 +68,42 @@ CREATE TABLE IF NOT EXISTS accounts (
   CONSTRAINT fk_accounts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS monitors (
+  id VARCHAR(40) PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  account_id VARCHAR(40) NOT NULL,
+  provider VARCHAR(20) NOT NULL,
+  url TEXT NOT NULL,
+  passcode VARCHAR(20),
+  title VARCHAR(200),
+  target_path TEXT NOT NULL,
+  interval_minutes INT NOT NULL,
+  run_mode VARCHAR(12) NOT NULL DEFAULT 'cloud',
+  auto_share TINYINT NOT NULL DEFAULT 1,
+  share_expires INT NOT NULL DEFAULT 0,
+  share_passcode VARCHAR(20),
+  enabled TINYINT NOT NULL DEFAULT 1,
+  status VARCHAR(20) NOT NULL DEFAULT 'waiting',
+  last_signature VARCHAR(64),
+  last_checked_at BIGINT,
+  next_check_at BIGINT,
+  last_change_at BIGINT,
+  last_error TEXT,
+  last_task_id VARCHAR(40),
+  last_share_url TEXT,
+  change_count INT NOT NULL DEFAULT 0,
+  failure_count INT NOT NULL DEFAULT 0,
+  lock_token VARCHAR(40),
+  locked_until BIGINT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  KEY idx_monitors_user (user_id, created_at),
+  KEY idx_monitors_due (enabled, next_check_at),
+  KEY idx_monitors_account (account_id),
+  CONSTRAINT fk_monitors_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_monitors_account FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS tasks (
   id VARCHAR(40) PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -151,7 +187,8 @@ export async function initDb() {
         ['users', 'updated_at', 'ALTER TABLE users ADD COLUMN updated_at BIGINT NULL AFTER created_at'],
         ['accounts', 'updated_at', 'ALTER TABLE accounts ADD COLUMN updated_at BIGINT NULL AFTER created_at'],
         ['resources', 'task_id', 'ALTER TABLE resources ADD COLUMN task_id VARCHAR(40) NULL AFTER saved_path'],
-        ['resources', 'batch_id', 'ALTER TABLE resources ADD COLUMN batch_id VARCHAR(40) NULL AFTER task_id']
+        ['resources', 'batch_id', 'ALTER TABLE resources ADD COLUMN batch_id VARCHAR(40) NULL AFTER task_id'],
+        ['monitors', 'run_mode', "ALTER TABLE monitors ADD COLUMN run_mode VARCHAR(12) NOT NULL DEFAULT 'cloud' AFTER interval_minutes"]
       ]
       for (const [table, column, statement] of migrations) {
         const [found] = await pool.query(
@@ -446,6 +483,259 @@ export async function updateAccountForAdmin(id, patch = {}) {
 export async function deleteAccountForAdmin(id) {
   await q('DELETE FROM demo_tree WHERE account_id = ?', [id])
   await q('DELETE FROM accounts WHERE id = ?', [id])
+}
+
+// monitors
+const mapMonitor = (r) => r && ({
+  id: r.id,
+  userId: r.user_id,
+  accountId: r.account_id,
+  accountLabel: r.account_label || null,
+  provider: r.provider,
+  url: r.url,
+  passcode: r.passcode || '',
+  title: r.title || '',
+  targetPath: r.target_path,
+  intervalMinutes: Number(r.interval_minutes),
+  runMode: r.run_mode === 'local' ? 'local' : 'cloud',
+  autoShare: !!Number(r.auto_share),
+  shareExpires: Number(r.share_expires || 0),
+  sharePasscode: r.share_passcode || '',
+  enabled: !!Number(r.enabled),
+  status: r.status,
+  lastSignature: r.last_signature || '',
+  lastCheckedAt: r.last_checked_at || null,
+  nextCheckAt: r.next_check_at || null,
+  lastChangeAt: r.last_change_at || null,
+  lastError: r.last_error || '',
+  lastTaskId: r.last_task_id || '',
+  lastTaskStatus: r.last_task_status || '',
+  lastTaskProgress: Number(r.last_task_progress || 0),
+  lastTaskError: r.last_task_error || '',
+  lastShareUrl: r.last_share_url || '',
+  changeCount: Number(r.change_count || 0),
+  failureCount: Number(r.failure_count || 0),
+  lockToken: r.lock_token || '',
+  lockedUntil: r.locked_until || null,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at
+})
+
+const MONITOR_SELECT = `
+  SELECT m.*, a.label AS account_label,
+         lt.status AS last_task_status,
+         lt.progress AS last_task_progress,
+         lt.error AS last_task_error
+  FROM monitors m
+  LEFT JOIN accounts a ON a.id = m.account_id
+  LEFT JOIN tasks lt ON lt.id = m.last_task_id
+`
+
+export async function insertMonitor(monitor) {
+  const now = monitor.createdAt || Date.now()
+  await q(
+    `INSERT INTO monitors
+      (id, user_id, account_id, provider, url, passcode, title, target_path,
+       interval_minutes, run_mode, auto_share, share_expires, share_passcode, enabled, status,
+       last_signature, last_checked_at, next_check_at, last_change_at, last_error,
+       last_task_id, last_share_url, change_count, failure_count, lock_token,
+       locked_until, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      monitor.id,
+      monitor.userId,
+      monitor.accountId,
+      monitor.provider,
+      monitor.url,
+      monitor.passcode || null,
+      monitor.title || null,
+      monitor.targetPath,
+      monitor.intervalMinutes,
+      monitor.runMode === 'local' ? 'local' : 'cloud',
+      monitor.autoShare === false ? 0 : 1,
+      monitor.shareExpires || 0,
+      monitor.sharePasscode || null,
+      monitor.enabled === false ? 0 : 1,
+      monitor.status || 'waiting',
+      monitor.lastSignature || null,
+      monitor.lastCheckedAt || null,
+      monitor.nextCheckAt || null,
+      monitor.lastChangeAt || null,
+      monitor.lastError || null,
+      monitor.lastTaskId || null,
+      monitor.lastShareUrl || null,
+      monitor.changeCount || 0,
+      monitor.failureCount || 0,
+      monitor.lockToken || null,
+      monitor.lockedUntil || null,
+      now,
+      now
+    ]
+  )
+  return getMonitorById(monitor.id)
+}
+
+export async function listMonitors(userId) {
+  const [rows] = await q(
+    `${MONITOR_SELECT} WHERE m.user_id = ? ORDER BY m.created_at DESC`,
+    [userId]
+  )
+  return rows.map(mapMonitor)
+}
+
+export async function getMonitor(userId, id) {
+  const [rows] = await q(
+    `${MONITOR_SELECT} WHERE m.id = ? AND m.user_id = ? LIMIT 1`,
+    [id, userId]
+  )
+  return mapMonitor(rows[0])
+}
+
+export async function getMonitorById(id) {
+  const [rows] = await q(`${MONITOR_SELECT} WHERE m.id = ? LIMIT 1`, [id])
+  return mapMonitor(rows[0])
+}
+
+const MONITOR_PATCH_COLUMNS = {
+  accountId: 'account_id',
+  provider: 'provider',
+  url: 'url',
+  passcode: 'passcode',
+  title: 'title',
+  targetPath: 'target_path',
+  intervalMinutes: 'interval_minutes',
+  runMode: 'run_mode',
+  autoShare: 'auto_share',
+  shareExpires: 'share_expires',
+  sharePasscode: 'share_passcode',
+  enabled: 'enabled',
+  status: 'status',
+  lastSignature: 'last_signature',
+  lastCheckedAt: 'last_checked_at',
+  nextCheckAt: 'next_check_at',
+  lastChangeAt: 'last_change_at',
+  lastError: 'last_error',
+  lastTaskId: 'last_task_id',
+  lastShareUrl: 'last_share_url',
+  changeCount: 'change_count',
+  failureCount: 'failure_count',
+  lockToken: 'lock_token',
+  lockedUntil: 'locked_until'
+}
+
+function monitorPatchParts(patch = {}) {
+  const sets = []
+  const params = []
+  for (const [key, column] of Object.entries(MONITOR_PATCH_COLUMNS)) {
+    if (patch[key] === undefined) continue
+    let value = patch[key]
+    if (['autoShare', 'enabled'].includes(key)) value = value ? 1 : 0
+    sets.push(`${column} = ?`)
+    params.push(value)
+  }
+  return { sets, params }
+}
+
+export async function updateMonitor(userId, id, patch = {}) {
+  const { sets, params } = monitorPatchParts(patch)
+  if (!sets.length) return getMonitor(userId, id)
+  sets.push('updated_at = ?')
+  params.push(Date.now(), id, userId)
+  await q(`UPDATE monitors SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, params)
+  return getMonitor(userId, id)
+}
+
+export async function updateMonitorById(id, patch = {}) {
+  const { sets, params } = monitorPatchParts(patch)
+  if (!sets.length) return getMonitorById(id)
+  sets.push('updated_at = ?')
+  params.push(Date.now(), id)
+  await q(`UPDATE monitors SET ${sets.join(', ')} WHERE id = ?`, params)
+  return getMonitorById(id)
+}
+
+export async function deleteMonitor(userId, id) {
+  await q('DELETE FROM monitors WHERE id = ? AND user_id = ?', [id, userId])
+}
+
+export async function claimDueMonitors({ limit = 4, ttlMs = 5 * 60 * 1000 } = {}) {
+  const now = Date.now()
+  const [rows] = await q(
+    `SELECT * FROM monitors
+     WHERE enabled = 1
+       AND run_mode = 'cloud'
+       AND next_check_at IS NOT NULL
+       AND next_check_at <= ?
+       AND (locked_until IS NULL OR locked_until < ?)
+     ORDER BY next_check_at ASC
+     LIMIT ?`,
+    [now, now, limit]
+  )
+  const claimed = []
+  for (const row of rows) {
+    const lockToken = newId('mlock')
+    const [result] = await q(
+      `UPDATE monitors
+       SET lock_token = ?, locked_until = ?, status = IF(status = 'syncing', status, 'checking'), updated_at = ?
+       WHERE id = ? AND enabled = 1 AND run_mode = 'cloud' AND next_check_at <= ?
+         AND (locked_until IS NULL OR locked_until < ?)`,
+      [lockToken, now + ttlMs, now, row.id, now, now]
+    )
+    if (result.affectedRows) {
+      claimed.push(mapMonitor({
+        ...row,
+        status: row.status === 'syncing' ? row.status : 'checking',
+        lock_token: lockToken,
+        locked_until: now + ttlMs
+      }))
+    }
+  }
+  return claimed
+}
+
+export async function claimMonitor(userId, id, ttlMs = 5 * 60 * 1000) {
+  const now = Date.now()
+  const lockToken = newId('mlock')
+  const [result] = await q(
+    `UPDATE monitors
+     SET lock_token = ?, locked_until = ?, status = IF(status = 'syncing', status, 'checking'), updated_at = ?
+     WHERE id = ? AND user_id = ? AND enabled = 1
+       AND (locked_until IS NULL OR locked_until < ?)`,
+    [lockToken, now + ttlMs, now, id, userId, now]
+  )
+  if (!result.affectedRows) return null
+  return getMonitor(userId, id)
+}
+
+export async function releaseMonitorLock(id, lockToken, patch = {}) {
+  const { sets, params } = monitorPatchParts({ ...patch, lockToken: null, lockedUntil: null })
+  sets.push('updated_at = ?')
+  params.push(Date.now(), id, lockToken)
+  await q(
+    `UPDATE monitors SET ${sets.join(', ')} WHERE id = ? AND lock_token = ?`,
+    params
+  )
+  return getMonitorById(id)
+}
+
+export async function listMonitorsAwaitingTask(limit = 50) {
+  const [rows] = await q(
+    `${MONITOR_SELECT}
+     WHERE m.status = 'syncing' AND m.last_task_id IS NOT NULL
+     ORDER BY m.updated_at ASC
+     LIMIT ?`,
+    [limit]
+  )
+  return rows.map(mapMonitor)
+}
+
+export async function findShareByTaskId(userId, taskId) {
+  if (!taskId) return null
+  const [rows] = await q(
+    'SELECT * FROM shares WHERE user_id = ? AND task_id = ? ORDER BY created_at DESC LIMIT 1',
+    [userId, taskId]
+  )
+  return rows[0] ? mapShare(rows[0]) : null
 }
 
 // tasks

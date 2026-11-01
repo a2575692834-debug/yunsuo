@@ -14,6 +14,8 @@ import { overviewRouter } from './routes/overview.js'
 import { adminRouter } from './routes/admin.js'
 import { searchRouter } from './routes/search.js'
 import { publicRouter } from './routes/public.js'
+import { monitorsRouter } from './routes/monitors.js'
+import { monitorScheduler } from './monitor-scheduler.js'
 
 const app = express()
 app.use(cors({ origin: true }))
@@ -28,6 +30,7 @@ app.use('/api/overview', overviewRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/search', searchRouter)
 app.use('/api/public', publicRouter)
+app.use('/api/monitors', monitorsRouter)
 app.use('/api', transferRouter)
 app.use('/api', sharesRouter)
 
@@ -58,12 +61,14 @@ async function ensureAdminAccount() {
 await initDb()
 await ensureAdminAccount()
 await queue.restore()
+monitorScheduler.start()
 const server = app.listen(config.port, '0.0.0.0', () => {
   console.log(`[yunsuo] listening on :${config.port}`)
 })
 
 async function shutdown() {
   server.close(async () => {
+    monitorScheduler.stop()
     await closeDb()
     process.exit(0)
   })
