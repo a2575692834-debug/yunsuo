@@ -9,6 +9,8 @@ const emit = defineEmits(['update:modelValue'])
 
 const serverUrl = window.location.origin
 const downloadUrl = import.meta.env.VITE_DESKTOP_DOWNLOAD_URL || '/downloads/YunsuoDesktop-1.1.1.exe'
+const localDownloadUrl = 'https://github.com/a2575692834-debug/yunsuo/releases/download/v1.0.0-local/YunsuoLocal-Setup-1.0.0.exe'
+const localReleaseUrl = 'https://github.com/a2575692834-debug/yunsuo/releases/tag/v1.0.0-local'
 const copied = ref('')
 
 function close() {
@@ -71,9 +73,18 @@ async function copy(value, key) {
               </span>
             </a>
 
+            <a class="local-download" :href="localDownloadUrl" target="_blank" rel="noopener" @click="copied = 'local'">
+              <span class="local-download-mark">本</span>
+              <span>
+                <strong>{{ copied === 'local' ? '已开始下载' : '无需登录 · 本地单机版' }}</strong>
+                <small>GitHub Release · Windows 安装版 · 约 116 MB</small>
+              </span>
+              <b>↗</b>
+            </a>
+
             <div class="rail-note">
               <span class="status-dot" />
-              <span>无需安装，下载后直接运行</span>
+              <span>完整客户端无需安装；本地版自带安装向导</span>
             </div>
           </aside>
 
@@ -85,6 +96,18 @@ async function copy(value, key) {
               </div>
                 <span class="version mono">FULL MODE</span>
             </div>
+
+            <a class="local-banner" :href="localDownloadUrl" target="_blank" rel="noopener">
+              <span class="local-banner-mark">
+                <i>本</i>
+                <b>NO LOGIN</b>
+              </span>
+              <span class="local-banner-copy">
+                <strong>不想登录服务器？下载本地单机版</strong>
+                <small>无需账号、无需 MySQL，网盘 Cookie 与记录只保存在你的电脑。</small>
+              </span>
+              <span class="local-banner-action">立即下载 <b>↓</b></span>
+            </a>
 
             <div class="steps">
               <article class="step">
@@ -129,7 +152,10 @@ async function copy(value, key) {
             </div>
 
             <div class="body-actions">
-              <a class="text-link" :href="downloadUrl" target="_blank" rel="noopener">重新下载</a>
+              <span class="body-links">
+                <a class="text-link" :href="downloadUrl" target="_blank" rel="noopener">重新下载完整版</a>
+                <a class="text-link" :href="localReleaseUrl" target="_blank" rel="noopener">本地版版本说明</a>
+              </span>
               <button class="btn btn-primary" @click="close">我知道了</button>
             </div>
           </section>
@@ -269,6 +295,42 @@ async function copy(value, key) {
 .download > span:last-child { display: grid; gap: 3px; min-width: 0; }
 .download strong { font-size: 12px; }
 .download small { color: rgba(16,24,34,.5); font-size: 8px; letter-spacing: .05em; }
+.local-download {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 35px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 15px;
+  background: rgba(255,255,255,.055);
+  color: #f7f0e4;
+  text-decoration: none;
+  transition: transform .22s, border-color .22s, background .22s;
+}
+.local-download:hover {
+  transform: translateY(-2px);
+  border-color: rgba(92,196,169,.35);
+  background: rgba(255,255,255,.085);
+}
+.local-download-mark {
+  width: 35px;
+  height: 35px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: rgba(92,196,169,.17);
+  color: #8ee0c9;
+  font-family: var(--display);
+  font-size: 16px;
+}
+.local-download > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.local-download strong { font-size: 10px; }
+.local-download small { color: rgba(247,240,228,.4); font-size: 7px; letter-spacing: .02em; }
+.local-download > b { color: #8ee0c9; font-size: 12px; }
 .rail-note {
   position: relative;
   z-index: 1;
@@ -295,6 +357,61 @@ async function copy(value, key) {
 .eyebrow { color: var(--coral); font-size: 8px; letter-spacing: .2em; }
 .body-head h4 { margin: 7px 0 0; font-size: 28px; }
 .version { padding-top: 5px; color: rgba(16,24,34,.28); font-size: 8px; letter-spacing: .14em; }
+.local-banner {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 11px 12px;
+  border: 1px solid rgba(15,118,110,.14);
+  border-radius: 16px;
+  background:
+    radial-gradient(180px 100px at 100% 0%, rgba(15,118,110,.09), transparent 70%),
+    rgba(216,240,236,.34);
+  color: var(--ink);
+  text-decoration: none;
+  transition: transform .2s, border-color .2s, box-shadow .2s;
+}
+.local-banner:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15,118,110,.3);
+  box-shadow: 0 12px 25px rgba(15,118,110,.08);
+}
+.local-banner-mark {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+}
+.local-banner-mark i {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px 11px 11px 4px;
+  background: linear-gradient(135deg, var(--teal), #0a5d56);
+  box-shadow: 0 8px 18px rgba(15,118,110,.2);
+  color: #fff;
+  font: 700 17px/1 var(--display);
+  font-style: normal;
+}
+.local-banner-mark b { color: var(--teal); font: 6px/1 var(--mono); letter-spacing: .12em; }
+.local-banner-copy { display: grid; gap: 4px; min-width: 0; }
+.local-banner-copy strong { font-size: 10px; }
+.local-banner-copy small { color: var(--muted); font-size: 8px; line-height: 1.55; }
+.local-banner-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: var(--teal);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.local-banner-action b { font-size: 11px; }
 .steps { display: grid; gap: 7px; margin-top: 22px; }
 .step {
   display: grid;
@@ -377,6 +494,7 @@ async function copy(value, key) {
 .tip strong { display: block; font-size: 10px; }
 .tip p { margin: 3px 0 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
 .body-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: auto; padding-top: 20px; }
+.body-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .text-link { color: var(--muted); font-size: 10px; text-underline-offset: 3px; }
 .text-link:hover { color: var(--coral); }
 .desktop-guide-enter-active, .desktop-guide-leave-active { transition: opacity .24s ease; }
@@ -399,8 +517,11 @@ async function copy(value, key) {
   .rail-copy h3 { font-size: 30px; }
   .rail-copy p { display: none; }
   .download { margin-top: 18px; }
+  .local-download { margin-top: 7px; }
   .rail-note { margin-top: 16px; }
   .guide-body { overflow: visible; padding: 23px 19px 19px; }
   .body-head h4 { font-size: 24px; }
+  .local-banner { grid-template-columns: 50px minmax(0, 1fr); }
+  .local-banner-action { grid-column: 1 / -1; justify-self: stretch; justify-content: center; }
 }
 </style>
