@@ -13,6 +13,8 @@ desktop-local/release/YunsuoLocal-Setup-1.0.0.exe
 downloads/YunsuoLocal-Setup-1.0.0.exe
 ```
 
+GitHub 下载：[云梭本地版 v1.0.0](https://github.com/a2575692834-debug/yunsuo/releases/tag/v1.0.0-local)
+
 本地版内置全部网盘操作，不连接本项目后端或 MySQL。账号 Cookie 使用 Windows 安全存储加密保存在本机，支持百度、夸克、迅雷扫码与 Cookie 导入、智能转存、分享结果导出、文件管理、本地分享库和链接监控。安装向导可选择安装目录，并创建桌面与开始菜单快捷方式。
 
 详细说明见 `desktop-local/README.md`。安装包未使用商业代码签名证书，Windows SmartScreen 可能提示未知发布者。

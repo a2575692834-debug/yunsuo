@@ -25,7 +25,7 @@
 
 ## 安装
 
-运行 `YunsuoLocal-Setup-1.0.0.exe`，按安装向导选择目录、创建桌面快捷方式并完成安装。
+从 [GitHub Releases](https://github.com/a2575692834-debug/yunsuo/releases/tag/v1.0.0-local) 下载 `YunsuoLocal-Setup-1.0.0.exe`，运行后按安装向导选择目录、创建桌面快捷方式并完成安装。
 
 由于安装包未购买代码签名证书，Windows SmartScreen 可能提示未知发布者。确认文件来源可信后，选择「更多信息」→「仍要运行」。
 
