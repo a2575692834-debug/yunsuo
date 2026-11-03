@@ -76,6 +76,21 @@ function intervalLabel(minutes) {
   return `${minutes} 分钟`
 }
 
+function shareKey(url) {
+  try {
+    return new URL(url).pathname.split('/').filter(Boolean).pop() || ''
+  } catch {
+    return ''
+  }
+}
+
+function monitorFileTitle(monitor) {
+  const sourceTitle = String(monitor.sourceTitle || '').trim()
+  if (sourceTitle) return sourceTitle
+  const title = String(monitor.title || '').trim()
+  return !title || title === shareKey(monitor.url) ? '等待首次检查获取文件名' : title
+}
+
 function statusMeta(monitor) {
   switch (monitor.status) {
     case 'checking': return { label: '检查中', cls: 'blue' }
@@ -433,8 +448,10 @@ onBeforeUnmount(stopPolling)
           <div class="monitor-head">
             <span class="acc-mark" :class="providerMeta[m.provider]?.cls">{{ providerMeta[m.provider]?.mark }}</span>
             <div class="monitor-title">
-              <strong>{{ m.title || providerName(m.provider) }}</strong>
-              <span class="mono tiny">{{ m.url }}</span>
+              <strong class="file-name" :title="monitorFileTitle(m)">
+                <span>文件名称</span><b>{{ monitorFileTitle(m) }}</b>
+              </strong>
+              <span class="mono tiny monitor-url">{{ m.url }}</span>
             </div>
             <span class="mode-tag" :class="{ local: m.runMode === 'local' }">
               {{ m.runMode === 'local' ? '本地' : '云端' }}
@@ -581,8 +598,33 @@ onBeforeUnmount(stopPolling)
 .monitor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .monitor-head { display: flex; align-items: center; gap: 12px; }
 .monitor-title { flex: 1; display: grid; gap: 2px; min-width: 0; }
-.monitor-title strong { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.monitor-title .mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(16,24,34,.45); }
+.monitor-title .file-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-name > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: rgba(15,118,110,.09);
+  color: var(--teal);
+  font: 700 8px/1 var(--mono);
+  letter-spacing: .08em;
+}
+.file-name > b {
+  min-width: 0;
+  overflow: hidden;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.monitor-title .monitor-url { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(16,24,34,.45); }
 .monitor-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; margin: 14px 0; }
 .mm { display: grid; gap: 3px; }
 .mm strong { font-size: 13px; }

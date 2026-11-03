@@ -81,7 +81,7 @@ monitorsRouter.post('/', async (req, res, next) => {
       provider: account.provider,
       url: link.url,
       passcode: String(link.passcode || '').trim(),
-      title: String(body.title || link.key).slice(0, 200),
+      title: String(body.title || '').trim().slice(0, 200),
       targetPath,
       intervalMinutes: normalizeInterval(body.intervalMinutes),
       runMode: normalizeRunMode(body.runMode),

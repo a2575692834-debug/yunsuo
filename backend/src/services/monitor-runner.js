@@ -15,6 +15,17 @@ function backoffMinutes(monitor, failures) {
   return Math.min(360, Math.max(5, monitor.intervalMinutes) * 2 ** Math.min(failures, 4))
 }
 
+function inspectTitle(inspect, link) {
+  const title = String(inspect?.title || '').trim()
+  if (title && title !== link?.key) return title.slice(0, 200)
+  const names = (Array.isArray(inspect?.items) ? inspect.items : [])
+    .map((item) => String(item?.name || '').trim())
+    .filter(Boolean)
+  if (!names.length) return title.slice(0, 200)
+  const shown = names.slice(0, 3).join('、')
+  return (names.length > 3 ? `${shown} 等 ${names.length} 项` : shown).slice(0, 200)
+}
+
 async function activeTask(monitor) {
   if (!monitor.lastTaskId) return null
   const task = await getTaskById(monitor.lastTaskId)
@@ -73,10 +84,12 @@ export async function runMonitorPass(monitor, { force = false } = {}) {
   }
 
   const { account, link, inspect } = inspected
+  const sourceTitle = inspectTitle(inspect, link)
   const changed = force || !monitor.lastSignature || inspect.signature !== monitor.lastSignature
   if (!changed) {
     const next = await releaseMonitorLock(monitor.id, monitor.lockToken, {
       status: 'idle',
+      title: sourceTitle || monitor.title || '',
       lastSignature: inspect.signature,
       lastCheckedAt: now,
       lastError: '',
@@ -107,6 +120,7 @@ export async function runMonitorPass(monitor, { force = false } = {}) {
     })
     const next = await releaseMonitorLock(monitor.id, monitor.lockToken, {
       status: 'syncing',
+      title: sourceTitle || monitor.title || '',
       lastCheckedAt: now,
       lastError: '',
       failureCount: 0,

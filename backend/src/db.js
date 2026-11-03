@@ -495,6 +495,7 @@ const mapMonitor = (r) => r && ({
   url: r.url,
   passcode: r.passcode || '',
   title: r.title || '',
+  sourceTitle: r.latest_resource_title || '',
   targetPath: r.target_path,
   intervalMinutes: Number(r.interval_minutes),
   runMode: r.run_mode === 'local' ? 'local' : 'cloud',
@@ -525,7 +526,14 @@ const MONITOR_SELECT = `
   SELECT m.*, a.label AS account_label,
          lt.status AS last_task_status,
          lt.progress AS last_task_progress,
-         lt.error AS last_task_error
+         lt.error AS last_task_error,
+         (SELECT r.title
+          FROM resources r
+          WHERE r.task_id = m.last_task_id
+            AND r.title IS NOT NULL
+            AND r.title <> ''
+          ORDER BY r.created_at DESC
+          LIMIT 1) AS latest_resource_title
   FROM monitors m
   LEFT JOIN accounts a ON a.id = m.account_id
   LEFT JOIN tasks lt ON lt.id = m.last_task_id
