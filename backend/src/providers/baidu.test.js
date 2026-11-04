@@ -289,58 +289,6 @@ test('baidu incremental sync only transfers files missing from the destination',
   }
 })
 
-test('baidu exact target sync writes missing files into the selected folder', async () => {
-  const originalFetch = globalThis.fetch
-  let transferCall
-  globalThis.fetch = async (url, init = {}) => {
-    if (String(url).includes('/share/transfer?')) {
-      transferCall = { body: new URLSearchParams(String(init.body || '')) }
-      return json({ errno: 0 })
-    }
-    return json({ errno: 404 }, 404)
-  }
-
-  try {
-    const provider = new BaiduProvider()
-    provider.shareContext = async () => ({
-      surl: 'test-share',
-      shareid: '123',
-      uk: '456',
-      pageToken: 'test-token',
-      activeAccount: account,
-      files: [
-        { server_filename: '已存在.mp4', fs_id: 111, isdir: 0, size: 1024 },
-        { server_filename: '新增.mp4', fs_id: 222, isdir: 0, size: 2048 }
-      ],
-      sourceName: '资源合集',
-      referer: 'https://pan.baidu.com/s/test-share'
-    })
-    provider.ensureFolder = async (_account, path) => path
-    provider.transferFolder = async () => {
-      throw new Error('exact target sync must not create a wrapper folder')
-    }
-    provider.list = async () => [{ name: '已存在.mp4', type: 'file', size: 1024 }]
-
-    const result = await provider.transfer(
-      account,
-      {
-        key: '1test-share',
-        provider: 'baidu',
-        syncMode: true,
-        exactTargetPath: '/固定同步目录'
-      },
-      '6868',
-      '/固定同步目录'
-    )
-
-    assert.equal(transferCall.body.get('fsidlist'), '[222]')
-    assert.equal(transferCall.body.get('path'), '/固定同步目录')
-    assert.deepEqual(result.savedPaths, ['/固定同步目录'])
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
 test('baidu serializes concurrent share verification per account', async () => {
   const originalFetch = globalThis.fetch
   let activeInit = 0

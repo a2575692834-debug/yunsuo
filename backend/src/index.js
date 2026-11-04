@@ -16,9 +16,7 @@ import { searchRouter } from './routes/search.js'
 import { publicRouter } from './routes/public.js'
 import { monitorsRouter } from './routes/monitors.js'
 import { delistRouter } from './routes/delist.js'
-import { cloudSyncRouter } from './routes/cloud-sync.js'
 import { monitorScheduler } from './monitor-scheduler.js'
-import { cloudSyncScheduler } from './cloud-sync-scheduler.js'
 
 const app = express()
 app.use(cors({ origin: true }))
@@ -35,7 +33,6 @@ app.use('/api/search', searchRouter)
 app.use('/api/public', publicRouter)
 app.use('/api/monitors', monitorsRouter)
 app.use('/api/delist', delistRouter)
-app.use('/api/cloud-sync', cloudSyncRouter)
 app.use('/api', transferRouter)
 app.use('/api', sharesRouter)
 
@@ -67,7 +64,6 @@ await initDb()
 await ensureAdminAccount()
 await queue.restore()
 monitorScheduler.start()
-cloudSyncScheduler.start()
 const server = app.listen(config.port, '0.0.0.0', () => {
   console.log(`[yunsuo] listening on :${config.port}`)
 })
@@ -75,7 +71,6 @@ const server = app.listen(config.port, '0.0.0.0', () => {
 async function shutdown() {
   server.close(async () => {
     monitorScheduler.stop()
-    cloudSyncScheduler.stop()
     await closeDb()
     process.exit(0)
   })

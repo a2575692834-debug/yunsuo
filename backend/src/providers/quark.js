@@ -470,23 +470,14 @@ export class QuarkProvider extends Provider {
     const context = await this.shareContext(account, link, passcode)
     const { pwdId, stoken, sourceName } = context
     const syncMode = link.syncMode === true
-    const exactTargetPath = String(link.exactTargetPath || '').trim()
-    let jobPath
-    let targetFid
-    if (exactTargetPath) {
-      if (exactTargetPath === '/') this.fail('双向同步不能直接使用网盘根目录')
-      jobPath = exactTargetPath
-      targetFid = await this.ensureFolder(account, exactTargetPath)
-    } else {
-      const job = await this.transferFolder(
-        account,
-        targetPath,
-        sourceName,
-        syncMode
-      )
-      jobPath = job.path
-      targetFid = job.fid
-    }
+    const job = await this.transferFolder(
+      account,
+      targetPath,
+      sourceName,
+      syncMode
+    )
+    const jobPath = job.path
+    const targetFid = job.fid
     const items = syncMode
       ? selectMissingSyncItems(
           context.items,

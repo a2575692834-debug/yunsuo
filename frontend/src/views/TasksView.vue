@@ -29,7 +29,6 @@ const kindMeta = {
   transfer: { label: '转存', cls: 'coral' },
   share: { label: '分享', cls: 'blue' },
   search: { label: '搜索', cls: 'teal' },
-  'cloud-sync': { label: '跨盘同步', cls: 'gold' },
   'monitor-sync': { label: '监控同步', cls: 'teal' }
 }
 
