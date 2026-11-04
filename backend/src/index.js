@@ -15,6 +15,7 @@ import { adminRouter } from './routes/admin.js'
 import { searchRouter } from './routes/search.js'
 import { publicRouter } from './routes/public.js'
 import { monitorsRouter } from './routes/monitors.js'
+import { delistRouter } from './routes/delist.js'
 import { monitorScheduler } from './monitor-scheduler.js'
 
 const app = express()
@@ -31,6 +32,7 @@ app.use('/api/admin', adminRouter)
 app.use('/api/search', searchRouter)
 app.use('/api/public', publicRouter)
 app.use('/api/monitors', monitorsRouter)
+app.use('/api/delist', delistRouter)
 app.use('/api', transferRouter)
 app.use('/api', sharesRouter)
 

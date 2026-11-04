@@ -13,6 +13,7 @@ import SharesView from './views/SharesView.vue'
 import FilesView from './views/FilesView.vue'
 import AdminView from './views/AdminView.vue'
 import MonitorsView from './views/MonitorsView.vue'
+import DelistView from './views/DelistView.vue'
 import DesktopGuideModal from './components/DesktopGuideModal.vue'
 
 const nav = [
@@ -22,7 +23,8 @@ const nav = [
   { key: 'tasks', label: '任务中心', sub: 'TASKS', icon: '≋' },
   { key: 'shares', label: '分享库', sub: 'SHARES', icon: '↗' },
   { key: 'files', label: '我的空间', sub: 'FILES', icon: '▤' },
-  { key: 'monitors', label: '链接监控', sub: 'MONITORS', icon: '◎' }
+  { key: 'monitors', label: '链接监控', sub: 'MONITORS', icon: '◎' },
+  { key: 'delist', label: '批量下架', sub: 'DELIST', icon: '⌫' }
 ]
 
 const adminNav = { key: 'admin', label: '管理后台', sub: 'ADMIN', icon: '◆', admin: true }
@@ -36,7 +38,8 @@ const views = {
   shares: SharesView,
   files: FilesView,
   admin: AdminView,
-  monitors: MonitorsView
+  monitors: MonitorsView,
+  delist: DelistView
 }
 
 const currentView = computed(() => {
@@ -59,6 +62,7 @@ const pageMeta = {
   tasks: { title: '每一次搬运,都有迹可循。', sub: '实时进度、日志与取消。' },
   shares: { title: '分享,是云的第二次生命。', sub: '管理转存后生成的分享链接。' },
   files: { title: '你的空间,一目了然。', sub: '浏览账号里的文件与目录。' },
+  delist: { title: '该留下的留下,该清走的清走。', sub: '导入表格,匹配转存记录,确认后批量下架。' },
   admin: { title: '全站动向,尽在掌握。', sub: '管理员专属 · 用户、转存与分享全局视图。' }
 }
 

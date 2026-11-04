@@ -915,6 +915,39 @@ export async function listResources(userId) {
   return rows.map(mapResource)
 }
 
+export async function listResourcesForDelist(userId) {
+  const [rows] = await q(
+    `SELECT r.*, a.label AS account_label
+     FROM resources r
+     LEFT JOIN accounts a ON a.id = r.account_id AND a.user_id = r.user_id
+     WHERE r.user_id = ?
+     ORDER BY r.created_at DESC
+     LIMIT 5000`,
+    [userId]
+  )
+  return rows.map((row) => ({
+    ...mapResource(row),
+    accountLabel: row.account_label || null
+  }))
+}
+
+export async function getResourceForUser(userId, id) {
+  const [rows] = await q(
+    'SELECT * FROM resources WHERE id = ? AND user_id = ? LIMIT 1',
+    [id, userId]
+  )
+  return mapResource(rows[0])
+}
+
+export async function deleteResourcesForSavedPath(userId, resource) {
+  const [result] = await q(
+    `DELETE FROM resources
+     WHERE user_id = ? AND account_id = ? AND provider = ? AND saved_path = ?`,
+    [userId, resource.accountId, resource.provider, resource.savedPath]
+  )
+  return result.affectedRows
+}
+
 export async function deleteResourceForAdmin(id) {
   await q('DELETE FROM resources WHERE id = ?', [id])
 }
