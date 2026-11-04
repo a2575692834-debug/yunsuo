@@ -152,6 +152,85 @@ test('quark transfer creates folders and saves through the sharepage endpoint', 
   }
 })
 
+test('quark incremental sync only saves files missing from the destination', async () => {
+  const originalFetch = globalThis.fetch
+  let saveBody = null
+  globalThis.fetch = async (url, init = {}) => {
+    const requestUrl = String(url)
+    if (requestUrl.includes('/share/sharepage/token?')) {
+      return json({ code: 0, data: { stoken: 'stoken_test' } })
+    }
+    if (requestUrl.includes('/share/sharepage/detail?')) {
+      return json({
+        code: 0,
+        data: {
+          title: '资源合集',
+          list: [
+            {
+              share_fid: 'existing_file',
+              share_fid_token: 'existing_token',
+              file_name: '已存在.mp4',
+              file: true
+            },
+            {
+              share_fid: 'new_file',
+              share_fid_token: 'new_token',
+              file_name: '新增.mp4',
+              file: true
+            }
+          ]
+        }
+      })
+    }
+    if (requestUrl.includes('/share/sharepage/save?')) {
+      saveBody = JSON.parse(init.body)
+      return json({ code: 0, data: { task_id: 'save_task_2' } })
+    }
+    if (requestUrl.includes('/clouddrive/task?')) {
+      return json({
+        code: 0,
+        data: { status: 2, save_as: { save_as_top_fids: ['saved_new_file'] } }
+      })
+    }
+    return json({ code: 404, message: 'unexpected endpoint' })
+  }
+
+  try {
+    const provider = new QuarkProvider()
+    provider.transferFolder = async () => ({
+      path: '/周一/资源合集',
+      fid: 'target_fid'
+    })
+    let listCalls = 0
+    provider.listByFid = async () => {
+      listCalls++
+      if (listCalls === 1) {
+        return [{ fid: 'existing_file', type: 'file', name: '已存在.mp4' }]
+      }
+      return [{
+        fid: 'saved_new_file',
+        name: '新增.mp4',
+        path: '/周一/资源合集/新增.mp4',
+        type: 'file'
+      }]
+    }
+
+    const result = await provider.transfer(
+      account,
+      { key: 'pwd_test', provider: 'quark', syncMode: true },
+      '',
+      '/周一'
+    )
+
+    assert.ok(saveBody)
+    assert.deepEqual(saveBody.fid_list, ['new_file'])
+    assert.deepEqual(saveBody.fid_token_list, ['new_token'])
+    assert.deepEqual(result.savedFids, ['saved_new_file'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('quark folder creation uses the file endpoint', async () => {
   const originalFetch = globalThis.fetch
   const calls = []

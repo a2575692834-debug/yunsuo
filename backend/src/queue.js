@@ -54,6 +54,10 @@ class TaskQueue {
         if (task.logs.length > 80) task.logs.shift()
         await patchTask(task.id, { logs: task.logs })
       },
+      setDetail: async (patch) => {
+        task.detail = { ...(task.detail || {}), ...(patch || {}) }
+        await patchTask(task.id, { detail: task.detail })
+      },
       rename: async (title) => {
         task.title = String(title).slice(0, 200)
         await patchTask(task.id, { title: task.title })

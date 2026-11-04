@@ -2,6 +2,7 @@ import QRCode from 'qrcode'
 import crypto from 'node:crypto'
 import { Provider } from './base.js'
 import { shareSignature } from './fingerprint.js'
+import { selectMissingSyncItems } from './sync-items.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125 Safari/537.36'
 const CLIENT_ID = '532'
@@ -467,15 +468,31 @@ export class QuarkProvider extends Provider {
   async transfer(account, link, passcode, targetPath = '/') {
     this.needCookie(account)
     const context = await this.shareContext(account, link, passcode)
-    const { pwdId, stoken, items, sourceName } = context
+    const { pwdId, stoken, sourceName } = context
+    const syncMode = link.syncMode === true
     const job = await this.transferFolder(
       account,
       targetPath,
       sourceName,
-      link.syncMode === true
+      syncMode
     )
     const jobPath = job.path
     const targetFid = job.fid
+    const items = syncMode
+      ? selectMissingSyncItems(
+          context.items,
+          await this.listByFid(account, targetFid, jobPath),
+          { sourceName }
+        )
+      : context.items
+    if (!items.length) {
+      return {
+        sourceName,
+        savedFids: [],
+        savedPaths: [jobPath],
+        skipped: true
+      }
+    }
     const saved = await this.call(account, 'POST', this.saveEndpoint(), {
       fid_list: items.map((x) => x.share_fid || x.fid),
       fid_token_list: items.map((x) => x.share_fid_token || ''),

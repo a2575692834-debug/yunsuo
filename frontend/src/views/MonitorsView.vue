@@ -300,7 +300,10 @@ onBeforeUnmount(stopPolling)
     <section class="card builder">
       <div class="eyebrow">WATCH &amp; SYNC</div>
       <h3 class="display">新建链接监控</h3>
-      <p class="muted">粘贴别人持续更新的分享链接。云端由服务器持续巡检；本地由桌面端驱动，关闭客户端后自动暂停。</p>
+      <p class="muted">
+        粘贴别人持续更新的分享链接。云端由服务器持续巡检；本地由桌面端驱动，关闭客户端后自动暂停。
+        同步时只补充目标目录中不存在的文件，已存在的同名文件不会重复转存。
+      </p>
 
       <div class="run-mode" role="radiogroup" aria-label="监控运行方式">
         <button

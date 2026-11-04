@@ -2,6 +2,7 @@ import QRCode from 'qrcode'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Provider } from './base.js'
 import { shareSignature } from './fingerprint.js'
+import { selectMissingSyncItems } from './sync-items.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125 Safari/537.36'
 const CLIENT_ID = 'XW5SkOhLDjnOZP7J'
@@ -415,14 +416,29 @@ export class XunleiProvider extends Provider {
   async transfer(account, link, passcode, targetPath = '/') {
     const context = await this.shareContext(account, link, passcode)
     const { shareId, files, sourceName } = context
-    const ids = files.map((x) => x.id || x.file_id).filter(Boolean)
-    if (!ids.length) this.fail('迅雷分享中没有可转存的文件')
+    const syncMode = link.syncMode === true
     const jobPath = await this.transferFolder(
       account,
       targetPath,
       sourceName,
-      link.syncMode === true
+      syncMode
     )
+    const selectedFiles = syncMode
+      ? selectMissingSyncItems(
+          files,
+          await this.list(account, jobPath),
+          { sourceName }
+        )
+      : files
+    if (!selectedFiles.length && syncMode) {
+      return {
+        sourceName,
+        savedPaths: [jobPath],
+        skipped: true
+      }
+    }
+    const ids = selectedFiles.map((x) => x.id || x.file_id).filter(Boolean)
+    if (!ids.length) this.fail('迅雷分享中没有可转存的文件')
     const parentId = await this.fileId(account, jobPath)
     await this.api(account, 'https://api-pan.xunlei.com/drive/v1/share/transfer', {
       method: 'POST',

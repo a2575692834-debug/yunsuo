@@ -771,13 +771,21 @@ export async function insertTask(t) {
 }
 
 export async function patchTask(id, patch) {
-  const map = { title: 'title', status: 'status', progress: 'progress', logs: 'logs', error: 'error', finishedAt: 'finished_at' }
+  const map = {
+    title: 'title',
+    detail: 'detail',
+    status: 'status',
+    progress: 'progress',
+    logs: 'logs',
+    error: 'error',
+    finishedAt: 'finished_at'
+  }
   const sets = []
   const params = []
   for (const [k, col] of Object.entries(map)) {
     if (patch[k] !== undefined) {
       sets.push(`${col} = ?`)
-      params.push(k === 'logs' ? json(patch[k]) : patch[k])
+      params.push(['detail', 'logs'].includes(k) ? json(patch[k]) : patch[k])
     }
   }
   if (!sets.length) return

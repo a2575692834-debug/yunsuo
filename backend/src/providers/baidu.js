@@ -1,5 +1,6 @@
 import { Provider } from './base.js'
 import { shareSignature } from './fingerprint.js'
+import { selectMissingSyncItems } from './sync-items.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125 Safari/537.36'
 const TRANSIENT_NETWORK_CODES = new Set([
@@ -742,13 +743,29 @@ export class BaiduProvider extends Provider {
   async transfer(account, link, passcode, targetPath = '/') {
     this.needCookie(account)
     const context = await this.shareContext(account, link, passcode)
-    const { surl, shareid, uk, pageToken, activeAccount, fsIds, sourceName } = context
+    const { surl, shareid, uk, pageToken, activeAccount, files, sourceName } = context
+    const syncMode = link.syncMode === true
     const jobPath = await this.transferFolder(
       activeAccount,
       targetPath,
       sourceName,
-      link.syncMode === true
+      syncMode
     )
+    const selectedFiles = syncMode
+      ? selectMissingSyncItems(
+          files,
+          await this.list(activeAccount, jobPath),
+          { sourceName }
+        )
+      : files
+    const fsIds = selectedFiles.map((x) => x.fs_id).filter(Boolean)
+    if (!fsIds.length) {
+      return {
+        sourceName,
+        savedPaths: [jobPath],
+        skipped: true
+      }
+    }
 
     const transferQuery = new URLSearchParams({
       shareid,
@@ -770,7 +787,7 @@ export class BaiduProvider extends Provider {
         body: new URLSearchParams({
           fsidlist: JSON.stringify(fsIds),
           path: jobPath,
-          ...(link.syncMode === true ? { ondup: 'newcopy' } : {})
+          ...(syncMode ? { ondup: 'newcopy' } : {})
         })
       }
     )

@@ -26,6 +26,7 @@ async function reconcileTasks() {
     const task = await getMonitorTask(monitor)
     if (!task || task.status === 'running' || task.status === 'queued') continue
     const share = task.status === 'done' ? await findShareByTaskId(monitor.userId, task.id) : null
+    const skipped = task.status === 'done' && task.detail?.skipped === true
     await updateMonitorById(monitor.id, {
       status: task.status === 'done' ? 'idle' : 'error',
       lastTaskId: task.id,
@@ -35,8 +36,12 @@ async function reconcileTasks() {
       lastError: task.status === 'done' ? '' : (task.error || '监控同步失败'),
       lastShareUrl: task.status === 'done' ? (share?.url || '') : (monitor.lastShareUrl || ''),
       failureCount: task.status === 'done' ? 0 : monitor.failureCount,
-      lastChangeAt: task.status === 'done' ? (task.finishedAt || Date.now()) : monitor.lastChangeAt,
-      changeCount: task.status === 'done' ? (monitor.changeCount || 0) + 1 : monitor.changeCount,
+      lastChangeAt: task.status === 'done' && !skipped
+        ? (task.finishedAt || Date.now())
+        : monitor.lastChangeAt,
+      changeCount: task.status === 'done' && !skipped
+        ? (monitor.changeCount || 0) + 1
+        : monitor.changeCount,
       nextCheckAt: Date.now() + monitor.intervalMinutes * 60000
     })
   }

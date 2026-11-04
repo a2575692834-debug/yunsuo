@@ -49,6 +49,11 @@ export async function enqueueTransfer({
         )
         const sourceName = safeTitle(saved.sourceName, link.key)
         await api.rename(`${prefix} · ${sourceName}`)
+        if (saved.skipped) {
+          await api.log('目标目录已包含本次分享的全部内容，已跳过重复转存')
+          await api.setDetail({ skipped: true, addedCount: 0 })
+          return
+        }
         await api.log(`转存完成${saved.savedPaths?.length ? ' → ' + saved.savedPaths.join(', ') : ''}`)
         await insertResource({
           id: newId('res'),
