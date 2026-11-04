@@ -14,6 +14,7 @@ import FilesView from './views/FilesView.vue'
 import AdminView from './views/AdminView.vue'
 import MonitorsView from './views/MonitorsView.vue'
 import DelistView from './views/DelistView.vue'
+import CloudSyncView from './views/CloudSyncView.vue'
 import DesktopGuideModal from './components/DesktopGuideModal.vue'
 
 const nav = [
@@ -24,6 +25,7 @@ const nav = [
   { key: 'shares', label: '分享库', sub: 'SHARES', icon: '↗' },
   { key: 'files', label: '我的空间', sub: 'FILES', icon: '▤' },
   { key: 'monitors', label: '链接监控', sub: 'MONITORS', icon: '◎' },
+  { key: 'cloudsync', label: '网盘同步', sub: 'BRIDGE', icon: '⇆' },
   { key: 'delist', label: '批量下架', sub: 'DELIST', icon: '⌫' }
 ]
 
@@ -39,6 +41,7 @@ const views = {
   files: FilesView,
   admin: AdminView,
   monitors: MonitorsView,
+  cloudsync: CloudSyncView,
   delist: DelistView
 }
 
@@ -62,6 +65,7 @@ const pageMeta = {
   tasks: { title: '每一次搬运,都有迹可循。', sub: '实时进度、日志与取消。' },
   shares: { title: '分享,是云的第二次生命。', sub: '管理转存后生成的分享链接。' },
   files: { title: '你的空间,一目了然。', sub: '浏览账号里的文件与目录。' },
+  cloudsync: { title: '让两朵云,彼此抵达。', sub: '百度网盘与夸克网盘之间的一站式增量同步。' },
   delist: { title: '该留下的留下,该清走的清走。', sub: '读取分享内名称,比对网盘 1-2 级目录,确认后批量下架。' },
   admin: { title: '全站动向,尽在掌握。', sub: '管理员专属 · 用户、转存与分享全局视图。' }
 }

@@ -28,7 +28,9 @@ const statusMeta = {
 const kindMeta = {
   transfer: { label: '转存', cls: 'coral' },
   share: { label: '分享', cls: 'blue' },
-  search: { label: '搜索', cls: 'teal' }
+  search: { label: '搜索', cls: 'teal' },
+  'cloud-sync': { label: '跨盘同步', cls: 'gold' },
+  'monitor-sync': { label: '监控同步', cls: 'teal' }
 }
 
 const shown = computed(() => filter.value === 'all' ? tasks.value : tasks.value.filter((t) => t.status === filter.value))

@@ -16,6 +16,7 @@ import { searchRouter } from './routes/search.js'
 import { publicRouter } from './routes/public.js'
 import { monitorsRouter } from './routes/monitors.js'
 import { delistRouter } from './routes/delist.js'
+import { cloudSyncRouter } from './routes/cloud-sync.js'
 import { monitorScheduler } from './monitor-scheduler.js'
 
 const app = express()
@@ -33,6 +34,7 @@ app.use('/api/search', searchRouter)
 app.use('/api/public', publicRouter)
 app.use('/api/monitors', monitorsRouter)
 app.use('/api/delist', delistRouter)
+app.use('/api/cloud-sync', cloudSyncRouter)
 app.use('/api', transferRouter)
 app.use('/api', sharesRouter)
 
