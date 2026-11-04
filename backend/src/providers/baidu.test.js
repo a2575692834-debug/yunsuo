@@ -243,3 +243,91 @@ test('baidu transfer normalizes short links and preserves the verified share ses
     globalThis.fetch = originalFetch
   }
 })
+
+test('baidu serializes concurrent share verification per account', async () => {
+  const originalFetch = globalThis.fetch
+  let activeInit = 0
+  let maxActiveInit = 0
+
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/share/init?')) {
+      const surl = new URL(target).searchParams.get('surl')
+      activeInit++
+      maxActiveInit = Math.max(maxActiveInit, activeInit)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      activeInit--
+      return new Response(
+        `<script>yunData = {shareid:'${surl}', share_uk:'456', filename:'资源-${surl}.zip'};</script>`
+      )
+    }
+    if (target.includes('/share/verify?')) {
+      return json({ errno: 0, randsk: 'test-randsk' })
+    }
+    if (target.includes('/share/list?')) {
+      return json({
+        errno: 0,
+        list: [{ server_filename: '资源.zip', fs_id: 789, isdir: 0, size: 1024 }]
+      })
+    }
+    return json({ errno: 404 }, 404)
+  }
+
+  try {
+    const provider = new BaiduProvider({
+      shareMinIntervalMs: 0,
+      shareVerifyRetryDelayMs: 0
+    })
+    await Promise.all([
+      provider.shareNames(account, { key: 'share-a', url: 'https://pan.baidu.com/s/share-a' }, 'A1B2'),
+      provider.shareNames(account, { key: 'share-b', url: 'https://pan.baidu.com/s/share-b' }, 'C3D4')
+    ])
+    assert.equal(maxActiveInit, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('baidu retries a transient share passcode verification failure', async () => {
+  const originalFetch = globalThis.fetch
+  let verifyAttempts = 0
+
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/share/init?')) {
+      return new Response(
+        "<script>yunData = {shareid:'123', share_uk:'456', filename:'资源.zip'};</script>"
+      )
+    }
+    if (target.includes('/share/verify?')) {
+      verifyAttempts++
+      return json({
+        errno: verifyAttempts === 1 ? -12 : 0,
+        ...(verifyAttempts === 1 ? {} : { randsk: 'test-randsk' })
+      })
+    }
+    if (target.includes('/share/list?')) {
+      return json({
+        errno: 0,
+        list: [{ server_filename: '资源.zip', fs_id: 789, isdir: 0, size: 1024 }]
+      })
+    }
+    return json({ errno: 404 }, 404)
+  }
+
+  try {
+    const provider = new BaiduProvider({
+      shareMinIntervalMs: 0,
+      shareVerifyRetryDelayMs: 0
+    })
+    const result = await provider.shareNames(
+      account,
+      { key: 'share-a', url: 'https://pan.baidu.com/s/share-a' },
+      'A1B2'
+    )
+    assert.equal(verifyAttempts, 2)
+    assert.equal(result.title, '资源.zip')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

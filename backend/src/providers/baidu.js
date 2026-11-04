@@ -172,9 +172,13 @@ function jsonp(text) {
 }
 
 export class BaiduProvider extends Provider {
-  constructor() {
+  constructor(options = {}) {
     super({ id: 'baidu', name: '百度网盘', qr: true, transfer: true, share: true, files: true, search: true })
     this.qrSessions = new Map()
+    this.shareQueues = new Map()
+    this.shareLastFinishedAt = new Map()
+    this.shareMinIntervalMs = Math.max(0, Number(options.shareMinIntervalMs ?? 650))
+    this.shareVerifyRetryDelayMs = Math.max(0, Number(options.shareVerifyRetryDelayMs ?? 900))
   }
 
   request(url, init = {}) {
@@ -538,7 +542,43 @@ export class BaiduProvider extends Provider {
     return null
   }
 
+  async serializedShare(account, task) {
+    const key = String(account?.id || this.token(account) || 'baidu-share')
+    const previous = this.shareQueues.get(key) || Promise.resolve()
+    const queued = previous.catch(() => {}).then(async () => {
+      const elapsed = Date.now() - (this.shareLastFinishedAt.get(key) || 0)
+      const wait = Math.max(0, this.shareMinIntervalMs - elapsed)
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait))
+      try {
+        return await task()
+      } finally {
+        this.shareLastFinishedAt.set(key, Date.now())
+      }
+    })
+    this.shareQueues.set(key, queued)
+    try {
+      return await queued
+    } finally {
+      if (this.shareQueues.get(key) === queued) this.shareQueues.delete(key)
+    }
+  }
+
   async shareContext(account, link, passcode) {
+    this.needCookie(account)
+    return this.serializedShare(account, async () => {
+      try {
+        return await this.shareContextAttempt(account, link, passcode)
+      } catch (err) {
+        if (Number(err?.baiduErrno) !== -12) throw err
+        if (this.shareVerifyRetryDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, this.shareVerifyRetryDelayMs))
+        }
+        return this.shareContextAttempt(account, link, passcode)
+      }
+    })
+  }
+
+  async shareContextAttempt(account, link, passcode) {
     this.needCookie(account)
     const surl = baiduSurl(link.key)
     if (!surl) this.fail('百度分享链接格式不正确')
@@ -581,7 +621,17 @@ export class BaiduProvider extends Provider {
     mergeCookies(jar, verify.headers)
     activeAccount = { ...account, cookie: cookieHeader(jar) }
     const vdata = await verify.json()
-    if (vdata.errno !== 0) this.fail('百度提取码校验失败: ' + (vdata.err_msg || vdata.errno))
+    if (Number(vdata.errno) !== 0) {
+      const errno = Number(vdata.errno)
+      const detail = vdata.err_msg || vdata.errno || '未知错误'
+      const message = errno === -12
+        ? `百度提取码校验失败（-12）：提取码可能错误，或百度风控暂时拒绝了请求，请稍后重试`
+        : `百度提取码校验失败: ${detail}`
+      throw Object.assign(new Error(message), {
+        status: 400,
+        baiduErrno: errno
+      })
+    }
     const randsk = vdata.randsk || ''
 
     const listData = await this.api(activeAccount,
