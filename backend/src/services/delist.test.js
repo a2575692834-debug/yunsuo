@@ -74,12 +74,14 @@ test('extracts and deduplicates supported share links', () => {
 
   const quark = parsed.links.find((link) => link.provider === 'quark')
   assert.equal(quark.sourceTitle, '资源甲')
+  assert.equal(quark.passcode, '7K2X')
   assert.deepEqual(quark.rows, [2, 4])
   assert.deepEqual(quark.columns, ['发货附言', '模版内容'])
   assert.equal(quark.occurrences, 2)
 
   const baidu = parsed.links.find((link) => link.key === '1abc')
   assert.equal(baidu.occurrences, 2)
+  assert.equal(baidu.passcode, 'QWER')
 })
 
 test('share URL normalization ignores query strings and unsupported providers', () => {
@@ -93,7 +95,7 @@ test('share URL normalization ignores query strings and unsupported providers', 
   assert.equal(parseShareUrl('https://example.com/s/not-supported'), null)
 })
 
-test('matches resources from the real netdisk tree within three levels', async () => {
+test('opens share links and matches names within the first two folder levels', async () => {
   const account = {
     id: 'account-baidu-1',
     userId: 'user-1',
@@ -106,29 +108,32 @@ test('matches resources from the real netdisk tree within three levels', async (
       { name: '转存', path: '/转存', type: 'dir' }
     ],
     '/转存': [
-      { name: '2026-11-04', path: '/转存/2026-11-04', type: 'dir' }
+      { name: '资源甲', path: '/转存/资源甲', type: 'dir' },
+      { name: '资源乙 (2)', path: '/转存/资源乙 (2)', type: 'dir' },
+      { name: '更深一层', path: '/转存/更深一层', type: 'dir' },
+      { name: '无关资源', path: '/转存/无关资源', type: 'dir' }
     ],
-    '/转存/2026-11-04': [
-      { name: '资源甲', path: '/转存/2026-11-04/资源甲', type: 'dir' },
-      { name: '资源乙 (2)', path: '/转存/2026-11-04/资源乙 (2)', type: 'dir' },
-      { name: '无关资源', path: '/转存/2026-11-04/无关资源', type: 'dir' }
+    '/转存/更深一层': [
+      { name: '资源丙', path: '/转存/更深一层/资源丙', type: 'dir' }
     ]
   }
-  let searchCalls = 0
+  let shareCalls = 0
   const provider = {
     name: '百度网盘',
     canFiles: true,
-    canSearch: true,
     async list(_account, path) {
       return tree[path] || []
     },
-    async search() {
-      searchCalls++
-      return []
+    async shareNames(_account, link) {
+      shareCalls++
+      return {
+        title: link.key === 'c' ? '资源乙' : link.key === 'd' ? '资源丙' : '资源甲',
+        names: []
+      }
     }
   }
   const parsed = {
-    totalRows: 3,
+    totalRows: 4,
     sheets: ['资源'],
     links: [
       {
@@ -137,7 +142,8 @@ test('matches resources from the real netdisk tree within three levels', async (
         providerName: '百度网盘',
         key: 'a',
         url: 'https://pan.baidu.com/s/a',
-        sourceTitle: '资源甲',
+        sourceTitle: '表格商品标题甲',
+        passcode: '',
         rows: [2]
       },
       {
@@ -146,7 +152,8 @@ test('matches resources from the real netdisk tree within three levels', async (
         providerName: '百度网盘',
         key: 'b',
         url: 'https://pan.baidu.com/s/b',
-        sourceTitle: '资源甲',
+        sourceTitle: '表格商品标题乙',
+        passcode: '',
         rows: [3]
       },
       {
@@ -155,8 +162,19 @@ test('matches resources from the real netdisk tree within three levels', async (
         providerName: '百度网盘',
         key: 'c',
         url: 'https://pan.baidu.com/s/c',
-        sourceTitle: '资源乙',
+        sourceTitle: '表格商品标题丙',
+        passcode: '',
         rows: [4]
+      },
+      {
+        canonical: 'baidu:d',
+        provider: 'baidu',
+        providerName: '百度网盘',
+        key: 'd',
+        url: 'https://pan.baidu.com/s/d',
+        sourceTitle: '表格商品标题丁',
+        passcode: '',
+        rows: [5]
       }
     ]
   }
@@ -167,13 +185,14 @@ test('matches resources from the real netdisk tree within three levels', async (
   })
 
   assert.equal(result.summary.matched, 2)
-  assert.equal(result.summary.unmatched, 0)
-  assert.equal(searchCalls, 2)
+  assert.equal(result.summary.unmatched, 1)
+  assert.equal(shareCalls, 4)
   const exact = result.entries.find((entry) => entry.name === '资源甲')
-  assert.equal(exact.path, '/转存/2026-11-04/资源甲')
+  assert.equal(exact.path, '/转存/资源甲')
   assert.equal(exact.accountId, account.id)
   assert.equal(exact.matchMethod, 'exact')
   assert.equal(exact.recordCount, 2)
   assert.deepEqual(exact.sourceRows, [2, 3])
   assert.equal(result.entries.find((entry) => entry.name === '资源乙 (2)').matchMethod, 'copy')
+  assert.equal(result.entries.some((entry) => entry.name === '资源丙'), false)
 })

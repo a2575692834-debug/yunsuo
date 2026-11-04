@@ -1,16 +1,16 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { listAccounts } from '../db.js'
 import { getProvider } from '../providers/index.js'
+import { parseMany } from '../utils/parse.js'
 
 const MAX_FILE_BYTES = 12 * 1024 * 1024
 const MAX_UNCOMPRESSED_BYTES = 40 * 1024 * 1024
 const MAX_SHEETS = 20
 const MAX_CELLS = 100_000
 const MAX_LINKS = 5_000
-const DELIST_SCAN_DEPTH = 3
+const DELIST_SCAN_DEPTH = 2
 const DELIST_SCAN_MAX_DIRECTORIES = 600
 const DELIST_SCAN_MAX_ITEMS = 20_000
-const DELIST_SEARCH_LIMIT = 100
 
 const PROVIDERS = {
   baidu: {
@@ -24,8 +24,6 @@ const PROVIDERS = {
 }
 
 const TITLE_HEADERS = ['商品标题', '资源名称', '文件名称', '文件名', '标题']
-
-const URL_RE = /https?:\/\/[^\s"'<>，。；、）)】\]]+/gi
 
 function badRequest(message) {
   throw Object.assign(new Error(message), { status: 400 })
@@ -227,14 +225,15 @@ export function extractShareLinks(workbook) {
       const sourceTitle = cellText(row, titleIndex)
       for (let column = 0; column < row.values.length; column++) {
         const text = String(row.values[column] || '')
-        for (const raw of text.match(URL_RE) || []) {
-          const parsed = parseShareUrl(raw)
+        for (const parsedLink of parseMany(text)) {
+          const parsed = parseShareUrl(parsedLink.url)
           if (!parsed) continue
           const existing = links.get(parsed.canonical)
           if (existing) {
             existing.rows.add(row.rowNumber)
             existing.columns.add(header.headers[column] || `第 ${column + 1} 列`)
             if (!existing.sourceTitle && sourceTitle) existing.sourceTitle = sourceTitle
+            if (!existing.passcode && parsedLink.passcode) existing.passcode = parsedLink.passcode
             existing.occurrences++
             continue
           }
@@ -244,7 +243,8 @@ export function extractShareLinks(workbook) {
             provider: parsed.provider,
             providerName: parsed.providerName,
             key: parsed.key,
-            url: cleanUrl(raw),
+            url: cleanUrl(parsedLink.url),
+            passcode: parsedLink.passcode || '',
             sourceTitle: sourceTitle || '',
             sheet: sheet.name,
             rows: new Set([row.rowNumber]),
@@ -295,35 +295,77 @@ async function mapLimit(items, limit, worker) {
   return results
 }
 
-function groupLinksForDelist(links) {
-  const groups = new Map()
-  const withoutTitle = []
-  for (const link of links) {
-    const titleKey = normalizedTitle(link.sourceTitle)
-    if (!titleKey) {
-      withoutTitle.push(link)
-      continue
-    }
-    const key = `${link.provider}\0${titleKey}`
-    let group = groups.get(key)
-    if (!group) {
-      group = {
-        key,
-        provider: link.provider,
-        providerName: link.providerName,
-        title: link.sourceTitle,
-        titleKey,
-        canonical: link.canonical,
-        url: link.url,
-        sourceRows: new Set(),
-        links: []
-      }
-      groups.set(key, group)
-    }
-    group.links.push(link)
-    for (const row of link.rows) group.sourceRows.add(row)
+const GENERIC_SHARE_NAMES = new Set([
+  '百度网盘',
+  '夸克网盘',
+  '来自分享',
+  '分享'
+])
+
+function candidateNamesForLink(link, info) {
+  const names = []
+  const seen = new Set()
+  for (const value of [info?.title, ...(info?.names || [])]) {
+    const name = String(value || '').trim()
+    const key = normalizedTitle(name)
+    if (
+      !key ||
+      key === normalizedTitle(link.key) ||
+      GENERIC_SHARE_NAMES.has(key) ||
+      seen.has(key)
+    ) continue
+    seen.add(key)
+    names.push(name)
   }
-  return { groups: [...groups.values()], withoutTitle }
+  return names
+}
+
+async function resolveLinkCandidates(link, providerAccounts, resolveProvider, warnings) {
+  if (!providerAccounts.length) {
+    return {
+      link,
+      candidates: [],
+      reason: `未添加可用的${link.providerName}账号，无法打开分享链接`
+    }
+  }
+
+  const provider = resolveProvider(link.provider)
+  let lastError = null
+  for (const account of providerAccounts) {
+    try {
+      if (typeof provider.shareNames !== 'function') {
+        throw new Error(`${provider.name}暂不支持读取分享内容`)
+      }
+      const info = await provider.shareNames(account, link, link.passcode)
+      const candidates = candidateNamesForLink(link, info)
+      if (candidates.length) {
+        return {
+          link,
+          candidates,
+          shareTitle: String(info?.title || ''),
+          resolvedBy: account.label
+        }
+      }
+      lastError = new Error('分享中没有可用于匹配的文件或文件夹名称')
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  const fallback = link.sourceTitle ? [link.sourceTitle] : []
+  warnings.push({
+    accountId: providerAccounts[0].id,
+    accountLabel: providerAccounts[0].label,
+    provider: link.provider,
+    providerName: link.providerName,
+    error: `打开分享链接失败：${lastError?.message || '未知错误'}${fallback.length ? '；已回退表格中的资源名称' : ''}`
+  })
+  return {
+    link,
+    candidates: fallback,
+    usedFallback: fallback.length > 0,
+    reason: `打开分享链接失败：${lastError?.message || '未知错误'}`
+  }
 }
 
 async function scanAccountTree(account, provider, warnings) {
@@ -400,7 +442,7 @@ async function scanAccountTree(account, provider, warnings) {
       accountLabel: account.label,
       provider: account.provider,
       providerName: provider.name,
-      error: `目录较多，仅扫描前 ${directories} 个目录，未匹配项将继续通过网盘搜索查找`
+      error: `目录较多，仅扫描前 ${directories} 个目录，可能还有资源未覆盖`
     })
   }
   if (errors.length) {
@@ -427,20 +469,43 @@ export async function buildDelistPreview(userId, parsed, options = {}) {
     accountsByProvider.set(account.provider, list)
   }
 
-  const { groups, withoutTitle } = groupLinksForDelist(parsed.links)
   const warnings = []
-  const entries = []
-  const unmatched = []
-  const entriesByTarget = new Map()
-  const needsScan = []
+  const linkStates = await mapLimit(parsed.links, 3, (link) => (
+    resolveLinkCandidates(
+      link,
+      accountsByProvider.get(link.provider) || [],
+      resolveProvider,
+      warnings
+    )
+  ))
 
-  const addMatch = (group, item, matchMethod) => {
+  const candidatesByProviderKey = new Map()
+  for (const state of linkStates) {
+    for (const name of state.candidates) {
+      const key = normalizedTitle(name)
+      if (!key) continue
+      let byKey = candidatesByProviderKey.get(state.link.provider)
+      if (!byKey) {
+        byKey = new Map()
+        candidatesByProviderKey.set(state.link.provider, byKey)
+      }
+      const list = byKey.get(key) || []
+      list.push({ name, link: state.link })
+      byKey.set(key, list)
+    }
+  }
+
+  const entries = []
+  const entriesByTarget = new Map()
+  const matchedLinks = new Set()
+
+  const addMatch = (candidate, item, matchMethod) => {
     const targetKey = `${item.accountId}\0${item.path}`
     const existing = entriesByTarget.get(targetKey)
     if (existing) {
-      existing.recordCount += group.links.length
-      existing.sourceRows = [...new Set([...existing.sourceRows, ...group.sourceRows])]
-      existing.sourceTitles = [...new Set([...existing.sourceTitles, group.title])]
+      existing._links.add(candidate.link.canonical)
+      for (const row of candidate.link.rows) existing._rows.add(row)
+      existing._titles.add(candidate.name)
       if (matchMethod === 'exact') existing.matchMethod = 'exact'
       return
     }
@@ -456,110 +521,17 @@ export async function buildDelistPreview(userId, parsed, options = {}) {
       size: item.size,
       mtime: item.mtime,
       matchMethod,
-      sourceTitle: group.title,
-      sourceTitles: [group.title],
-      sourceRows: [...group.sourceRows],
-      recordCount: group.links.length
+      sourceTitle: candidate.name,
+      _titles: new Set([candidate.name]),
+      _rows: new Set(candidate.link.rows),
+      _links: new Set([candidate.link.canonical])
     }
     entries.push(entry)
     entriesByTarget.set(targetKey, entry)
   }
 
-  const addUnmatched = (group, reason) => {
-    unmatched.push({
-      canonical: group.canonical,
-      provider: group.provider,
-      providerName: group.providerName,
-      sourceTitle: group.title,
-      sourceRows: [...group.sourceRows],
-      linkCount: group.links.length,
-      url: group.url,
-      reason
-    })
-  }
-
-  // Search is cheaper than walking every directory. Any title that search
-  // cannot resolve is then checked against the real netdisk tree.
-  const searchTasks = []
-  const needsScanKeys = new Set()
-  for (const group of groups) {
-    const providerAccounts = accountsByProvider.get(group.provider) || []
-    if (!providerAccounts.length) {
-      addUnmatched(group, `未添加可用的${group.providerName}账号，无法扫描网盘文件`)
-      continue
-    }
-
-    const provider = resolveProvider(group.provider)
-    if (!provider.canSearch) {
-      needsScanKeys.add(group.key)
-      needsScan.push(group)
-      continue
-    }
-    for (const account of providerAccounts) {
-      searchTasks.push({ group, account, provider })
-    }
-  }
-
-  const foundGroups = new Set()
-  const searchResults = await mapLimit(searchTasks, 4, async ({ group, account, provider }) => {
-    try {
-      const rows = await provider.search(account, group.title.slice(0, 120), {
-        limit: DELIST_SEARCH_LIMIT
-      })
-      const matches = []
-      const seenPaths = new Set()
-      for (const row of Array.isArray(rows) ? rows : []) {
-        const matchMethod = matchMethodForTitle(group.title, row.name)
-        if (!matchMethod || !row.path) continue
-        const path = String(row.path)
-        if (seenPaths.has(path)) continue
-        seenPaths.add(path)
-        matches.push({
-          item: {
-            accountId: account.id,
-            accountLabel: account.label,
-            provider: account.provider,
-            providerName: provider.name,
-            name: String(row.name || ''),
-            path,
-            type: row.type === 'dir' ? 'dir' : 'file',
-            size: Number(row.size || 0),
-            mtime: Number(row.mtime || 0)
-          },
-          matchMethod
-        })
-      }
-      return { group, matches }
-    } catch (err) {
-      return {
-        group,
-        matches: [],
-        warning: {
-          accountId: account.id,
-          accountLabel: account.label,
-          provider: account.provider,
-          providerName: provider.name,
-          error: `搜索“${group.title}”失败：${err.message || '未知错误'}`
-        }
-      }
-    }
-  })
-
-  for (const result of searchResults) {
-    if (result.warning) warnings.push(result.warning)
-    if (!result.matches.length) continue
-    foundGroups.add(result.group.key)
-    for (const match of result.matches) addMatch(result.group, match.item, match.matchMethod)
-  }
-  for (const group of groups) {
-    if (!foundGroups.has(group.key) && !needsScanKeys.has(group.key) && (accountsByProvider.get(group.provider) || []).length) {
-      needsScanKeys.add(group.key)
-      needsScan.push(group)
-    }
-  }
-
   const scanAccounts = accounts.filter((account) =>
-    needsScan.some((group) => group.provider === account.provider)
+    candidatesByProviderKey.has(account.provider)
   )
   const scanResults = await mapLimit(scanAccounts, 2, async (account) => {
     const provider = resolveProvider(account.provider)
@@ -577,41 +549,61 @@ export async function buildDelistPreview(userId, parsed, options = {}) {
   })
   const scannedItems = scanResults.flat()
 
-  for (const group of needsScan) {
-    const matches = scannedItems
-      .filter((item) => item.provider === group.provider)
-      .map((item) => ({
-        item,
-        matchMethod: matchMethodForTitle(group.title, item.name)
-      }))
-      .filter((match) => match.matchMethod)
-
-    if (!matches.length) {
-      addUnmatched(
-        group,
-        `已搜索${group.providerName}，并扫描账号的 1-3 级目录，未找到同名文件或文件夹`
-      )
-      continue
+  for (const item of scannedItems) {
+    const byKey = candidatesByProviderKey.get(item.provider)
+    if (!byKey) continue
+    const exactKey = normalizedTitle(item.name)
+    const withoutCopyNumber = String(item.name || '').replace(/\s*\(\d+\)\s*$/, '')
+    const copyKey = normalizedTitle(withoutCopyNumber)
+    const candidates = [
+      ...(byKey.get(exactKey) || []),
+      ...(copyKey && copyKey !== exactKey ? byKey.get(copyKey) || [] : [])
+    ]
+    if (!candidates.length) continue
+    for (const candidate of candidates) {
+      const matchMethod = matchMethodForTitle(candidate.name, item.name)
+      if (!matchMethod) continue
+      addMatch(candidate, item, matchMethod)
+      matchedLinks.add(candidate.link.canonical)
     }
-    for (const match of matches) addMatch(group, match.item, match.matchMethod)
   }
 
-  for (const link of withoutTitle) {
-    unmatched.push({
-      canonical: link.canonical,
-      provider: link.provider,
-      providerName: link.providerName,
-      sourceTitle: '表格缺少资源名称',
-      sourceRows: link.rows,
-      linkCount: 1,
-      url: link.url,
-      reason: '无法仅凭分享链接确定网盘内文件名称'
+  const unmatched = linkStates
+    .filter((state) => !matchedLinks.has(state.link.canonical))
+    .map((state) => {
+      const link = state.link
+      let reason = state.reason
+      if (!reason && state.usedFallback) {
+        reason = `分享链接无法打开，按表格名称扫描 1-2 级目录未找到同名文件或文件夹`
+      }
+      if (!reason) {
+        reason = `已读取分享内容，并在网盘账号的 1-2 级目录中查找，未找到同名文件或文件夹`
+      }
+      return {
+        canonical: link.canonical,
+        provider: link.provider,
+        providerName: link.providerName,
+        sourceTitle: state.shareTitle || link.sourceTitle || state.candidates[0] || '未命名资源',
+        sourceRows: link.rows,
+        linkCount: 1,
+        url: link.url,
+        reason
+      }
     })
-  }
 
   entries.sort((a, b) => {
     if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
     return a.name.localeCompare(b.name, 'zh-CN')
+  })
+
+  const outputEntries = entries.map((entry) => {
+    const { _links, _rows, _titles, ...output } = entry
+    return {
+      ...output,
+      recordCount: _links.size,
+      sourceRows: [..._rows].sort((a, b) => a - b),
+      sourceTitles: [..._titles]
+    }
   })
 
   return {
@@ -619,14 +611,14 @@ export async function buildDelistPreview(userId, parsed, options = {}) {
       rows: parsed.totalRows,
       sheets: parsed.sheets.length,
       links: parsed.links.length,
-      matched: entries.length,
+      matched: outputEntries.length,
       unmatched: unmatched.length,
-      baidu: entries.filter((entry) => entry.provider === 'baidu').length,
-      quark: entries.filter((entry) => entry.provider === 'quark').length,
+      baidu: outputEntries.filter((entry) => entry.provider === 'baidu').length,
+      quark: outputEntries.filter((entry) => entry.provider === 'quark').length,
       accounts: accounts.length,
       scannedItems: scannedItems.length
     },
-    entries,
+    entries: outputEntries,
     unmatched,
     warnings
   }

@@ -401,6 +401,16 @@ export class QuarkProvider extends Provider {
     return { pwdId, stoken, items, sourceName }
   }
 
+  async shareNames(account, link, passcode) {
+    const context = await this.shareContext(account, link, passcode)
+    return {
+      title: context.sourceName,
+      names: context.items
+        .map((item) => String(item.file_name || item.name || '').trim())
+        .filter(Boolean)
+    }
+  }
+
   async inspectShare(account, link, passcode) {
     const context = await this.shareContext(account, link, passcode)
     const items = []

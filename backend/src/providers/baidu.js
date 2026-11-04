@@ -611,6 +611,16 @@ export class BaiduProvider extends Provider {
     }
   }
 
+  async shareNames(account, link, passcode) {
+    const context = await this.shareContext(account, link, passcode)
+    return {
+      title: context.sourceName,
+      names: context.files
+        .map((item) => String(item.server_filename || '').trim())
+        .filter(Boolean)
+    }
+  }
+
   async listShareDirectory(context, dir = '', root = false) {
     const query = new URLSearchParams({
       shareid: String(context.shareid),

@@ -110,8 +110,8 @@ async function chooseFile(nextFile) {
       .map((entry) => entry.id)
     notify(
       data.summary.matched
-        ? `扫描到 ${data.summary.matched} 个网盘资源，请核对后再执行下架`
-        : '已扫描网盘 1-3 级目录，但没有找到同名资源',
+        ? `比对到 ${data.summary.matched} 个网盘资源，请核对后再执行下架`
+        : '已读取分享内容并检查网盘 1-2 级目录，但没有找到同名资源',
       data.summary.matched ? 'success' : 'error'
     )
   } catch (err) {
@@ -225,7 +225,7 @@ async function execute() {
         <div class="eyebrow">RESOURCE RETIREMENT</div>
         <h3 class="display">用一张表，清理已保存的资源。</h3>
         <p class="muted">
-          导入 XLSX 后，云梭会识别百度、夸克分享链接，并直接扫描对应网盘账号的 1-3 级目录，用资源名称匹配真实文件。上传只做预览，不会立即删除。
+          导入 XLSX 后，云梭会先打开百度、夸克分享链接，读取其中的真实文件名和文件夹名，再到对应账号的 1-2 级目录中查找。上传只做预览，不会立即删除。
         </p>
         <div class="safety-steps">
           <div class="safety-step">
@@ -234,7 +234,7 @@ async function execute() {
           </div>
           <div class="safety-step">
             <span class="mono">02</span>
-            <div><strong>扫描网盘</strong><small>深入 1-3 级目录定位同名文件</small></div>
+            <div><strong>读取并比对</strong><small>打开分享，在 1-2 级目录查找同名项</small></div>
           </div>
           <div class="safety-step">
             <span class="mono">03</span>
@@ -258,7 +258,7 @@ async function execute() {
         </span>
         <span class="drop-kicker mono">{{ uploading ? 'SCANNING NETDISK' : 'XLSX IMPORT' }}</span>
         <strong class="display">
-          {{ uploading ? '正在解析表格并扫描网盘…' : preview ? preview.fileName || file?.name : '把表格拖到这里' }}
+          {{ uploading ? '正在读取分享并扫描网盘…' : preview ? preview.fileName || file?.name : '把表格拖到这里' }}
         </strong>
         <small v-if="!preview">
           支持百度 / 夸克分享链接，最大 12 MB
@@ -288,7 +288,7 @@ async function execute() {
           <article class="summary-stat card accent" style="--i: 1">
             <span class="mono">MATCHED</span>
             <strong>{{ preview.summary.matched }}</strong>
-            <small>网盘中匹配到的真实资源</small>
+            <small>网盘 1-2 级目录中匹配到的真实资源</small>
           </article>
           <article class="summary-stat card" style="--i: 2">
             <span class="mono">BAIDU</span>
