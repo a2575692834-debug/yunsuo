@@ -2,8 +2,7 @@ import express, { Router } from 'express'
 import { authRequired } from '../auth.js'
 import {
   deleteResourcesForSavedPath,
-  getAccount,
-  getResourceForUser
+  getAccount
 } from '../db.js'
 import { getProvider } from '../providers/index.js'
 import {
@@ -51,32 +50,36 @@ delistRouter.post('/preview', rawWorkbook, async (req, res, next) => {
 
 delistRouter.post('/execute', async (req, res, next) => {
   try {
-    const resourceId = String(req.body?.resourceId || '').trim()
-    if (!resourceId) return res.status(400).json({ error: '缺少要下架的 resourceId' })
+    const accountId = String(req.body?.accountId || '').trim()
+    let path = String(req.body?.path || '').trim().replace(/\\/g, '/')
+    if (!accountId) return res.status(400).json({ error: '缺少要下架的网盘账号' })
+    if (!path) return res.status(400).json({ error: '缺少要下架的网盘路径' })
+    if (!path.startsWith('/')) path = '/' + path
+    path = path.replace(/\/+/g, '/').replace(/\/+$/, '')
+    if (!path || path === '/' || path.includes('\0') || path.split('/').some((part) => part === '.' || part === '..')) {
+      return res.status(400).json({ error: '网盘路径不合法' })
+    }
 
-    const resource = await getResourceForUser(req.user.uid, resourceId)
-    if (!resource) return res.status(404).json({ error: '资源记录不存在或已下架' })
-    if (!['baidu', 'quark'].includes(resource.provider)) {
+    const account = await getAccount(req.user.uid, accountId)
+    if (!account) return res.status(404).json({ error: '网盘账号不存在' })
+    if (!['baidu', 'quark'].includes(account.provider)) {
       return res.status(400).json({ error: '批量下架目前只支持百度网盘和夸克网盘' })
     }
-    if (!resource.savedPath) return res.status(400).json({ error: '资源记录缺少网盘保存路径' })
 
-    const account = await getAccount(req.user.uid, resource.accountId)
-    if (!account) return res.status(404).json({ error: '资源绑定的网盘账号不存在' })
-    if (account.provider !== resource.provider) {
-      return res.status(400).json({ error: '资源与网盘账号类型不一致' })
-    }
-
-    const provider = getProvider(resource.provider)
-    await provider.remove(account, [resource.savedPath])
-    const removedRecords = await deleteResourcesForSavedPath(req.user.uid, resource)
+    const provider = getProvider(account.provider)
+    await provider.remove(account, [path])
+    const removedRecords = await deleteResourcesForSavedPath(req.user.uid, {
+      accountId: account.id,
+      provider: account.provider,
+      savedPath: path
+    })
 
     res.json({
       ok: true,
-      resourceId: resource.id,
-      provider: resource.provider,
-      title: resource.title || resource.savedPath.split('/').pop() || '未命名文件',
-      savedPath: resource.savedPath,
+      accountId: account.id,
+      provider: account.provider,
+      title: path.split('/').pop() || '未命名文件',
+      path,
       removedRecords
     })
   } catch (err) {

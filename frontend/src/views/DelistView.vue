@@ -25,20 +25,20 @@ const providerMeta = {
 
 const entries = computed(() => preview.value?.entries || [])
 const selectedEntries = computed(() =>
-  entries.value.filter((entry) => selectedIds.value.includes(entry.resourceId))
+  entries.value.filter((entry) => selectedIds.value.includes(entry.id))
 )
-const urlMatchedEntries = computed(() =>
-  entries.value.filter((entry) => entry.matchMethod === 'url' && entry.status !== 'done')
+const exactMatchedEntries = computed(() =>
+  entries.value.filter((entry) => entry.matchMethod === 'exact' && entry.status !== 'done')
 )
-const titleMatchedCount = computed(() =>
-  entries.value.filter((entry) => entry.matchMethod === 'title').length
+const copyMatchedCount = computed(() =>
+  entries.value.filter((entry) => entry.matchMethod === 'copy').length
 )
 const selectableEntries = computed(() =>
   entries.value.filter((entry) => entry.status !== 'done' && entry.status !== 'running')
 )
 const allSelectableSelected = computed(() =>
   selectableEntries.value.length > 0 &&
-  selectableEntries.value.every((entry) => selectedIds.value.includes(entry.resourceId))
+  selectableEntries.value.every((entry) => selectedIds.value.includes(entry.id))
 )
 const selectedBaidu = computed(() =>
   selectedEntries.value.filter((entry) => entry.provider === 'baidu').length
@@ -106,12 +106,12 @@ async function chooseFile(nextFile) {
     }))
     preview.value = data
     selectedIds.value = data.entries
-      .filter((entry) => entry.matchMethod === 'url')
-      .map((entry) => entry.resourceId)
+      .filter((entry) => entry.matchMethod === 'exact')
+      .map((entry) => entry.id)
     notify(
       data.summary.matched
-        ? `已匹配 ${data.summary.matched} 条资源，请核对后再执行下架`
-        : '已识别链接，但资源库中没有匹配记录',
+        ? `扫描到 ${data.summary.matched} 个网盘资源，请核对后再执行下架`
+        : '已扫描网盘 1-3 级目录，但没有找到同名资源',
       data.summary.matched ? 'success' : 'error'
     )
   } catch (err) {
@@ -134,9 +134,9 @@ function onDrop(event) {
 
 function toggleEntry(entry) {
   if (['running', 'done'].includes(entry.status)) return
-  selectedIds.value = selectedIds.value.includes(entry.resourceId)
-    ? selectedIds.value.filter((id) => id !== entry.resourceId)
-    : [...selectedIds.value, entry.resourceId]
+  selectedIds.value = selectedIds.value.includes(entry.id)
+    ? selectedIds.value.filter((id) => id !== entry.id)
+    : [...selectedIds.value, entry.id]
 }
 
 function toggleAll() {
@@ -144,11 +144,11 @@ function toggleAll() {
     selectedIds.value = []
     return
   }
-  selectedIds.value = selectableEntries.value.map((entry) => entry.resourceId)
+  selectedIds.value = selectableEntries.value.map((entry) => entry.id)
 }
 
-function selectUrlMatches() {
-  selectedIds.value = urlMatchedEntries.value.map((entry) => entry.resourceId)
+function selectExactMatches() {
+  selectedIds.value = exactMatchedEntries.value.map((entry) => entry.id)
 }
 
 function statusMeta(entry) {
@@ -193,7 +193,7 @@ async function execute() {
     entry.status = 'running'
     entry.error = ''
     try {
-      await api.post('/delist/execute', { resourceId: entry.resourceId })
+      await api.post('/delist/execute', { accountId: entry.accountId, path: entry.path })
       entry.status = 'done'
       succeeded++
     } catch (err) {
@@ -207,7 +207,7 @@ async function execute() {
   runResult.value = { succeeded, failed }
   selectedIds.value = targets
     .filter((entry) => entry.status === 'error')
-    .map((entry) => entry.resourceId)
+    .map((entry) => entry.id)
   emit('changed')
   notify(
     failed
@@ -225,7 +225,7 @@ async function execute() {
         <div class="eyebrow">RESOURCE RETIREMENT</div>
         <h3 class="display">用一张表，清理已保存的资源。</h3>
         <p class="muted">
-          导入 XLSX 后，云梭会识别百度、夸克分享链接，并匹配你资源库中的转存记录。上传只做预览，不会立即删除。
+          导入 XLSX 后，云梭会识别百度、夸克分享链接，并直接扫描对应网盘账号的 1-3 级目录，用资源名称匹配真实文件。上传只做预览，不会立即删除。
         </p>
         <div class="safety-steps">
           <div class="safety-step">
@@ -234,7 +234,7 @@ async function execute() {
           </div>
           <div class="safety-step">
             <span class="mono">02</span>
-            <div><strong>核对资源</strong><small>逐条查看账号、目录与匹配方式</small></div>
+            <div><strong>扫描网盘</strong><small>深入 1-3 级目录定位同名文件</small></div>
           </div>
           <div class="safety-step">
             <span class="mono">03</span>
@@ -256,9 +256,9 @@ async function execute() {
           <i />
           <b>{{ uploading ? '…' : file && preview ? '✓' : '↓' }}</b>
         </span>
-        <span class="drop-kicker mono">{{ uploading ? 'PARSING WORKBOOK' : 'XLSX IMPORT' }}</span>
+        <span class="drop-kicker mono">{{ uploading ? 'SCANNING NETDISK' : 'XLSX IMPORT' }}</span>
         <strong class="display">
-          {{ uploading ? '正在读取表格…' : preview ? preview.fileName || file?.name : '把表格拖到这里' }}
+          {{ uploading ? '正在解析表格并扫描网盘…' : preview ? preview.fileName || file?.name : '把表格拖到这里' }}
         </strong>
         <small v-if="!preview">
           支持百度 / 夸克分享链接，最大 12 MB
@@ -288,7 +288,7 @@ async function execute() {
           <article class="summary-stat card accent" style="--i: 1">
             <span class="mono">MATCHED</span>
             <strong>{{ preview.summary.matched }}</strong>
-            <small>资源库中匹配到的记录</small>
+            <small>网盘中匹配到的真实资源</small>
           </article>
           <article class="summary-stat card" style="--i: 2">
             <span class="mono">BAIDU</span>
@@ -303,7 +303,7 @@ async function execute() {
           <article class="summary-stat card muted-stat" style="--i: 4">
             <span class="mono">UNMATCHED</span>
             <strong>{{ preview.summary.unmatched }}</strong>
-            <small>未找到转存记录</small>
+            <small>网盘中未找到同名资源</small>
           </article>
         </div>
 
@@ -312,42 +312,55 @@ async function execute() {
             <div>
               <div class="eyebrow">MATCHED RESOURCES</div>
               <h3 class="display">核对下架清单</h3>
-              <p class="muted">默认只勾选分享链接精确匹配项；标题回退匹配需要你手动确认。</p>
+              <p class="muted">默认只勾选网盘内名称完全一致的资源；带“ (2)”等副本后缀的匹配需要你手动确认。</p>
             </div>
             <div class="head-actions">
-              <button class="btn btn-ghost mini" @click="selectUrlMatches">仅选链接匹配</button>
+              <button class="btn btn-ghost mini" @click="selectExactMatches">仅选精确匹配</button>
               <button class="btn btn-ghost mini" @click="toggleAll">
                 {{ allSelectableSelected ? '取消全选' : '全选可处理项' }}
               </button>
             </div>
           </header>
 
-          <div v-if="titleMatchedCount" class="match-warning">
+          <div v-if="copyMatchedCount" class="match-warning">
             <span class="warning-mark">!</span>
             <p>
-              有 <strong>{{ titleMatchedCount }}</strong> 条记录仅通过标题精确匹配，默认未勾选。请确认它们确实对应表格中的资源后再处理。
+              有 <strong>{{ copyMatchedCount }}</strong> 个网盘文件通过副本后缀匹配，默认未勾选。请确认它们确实对应表格中的资源后再处理。
             </p>
           </div>
+
+          <details v-if="preview.warnings?.length" class="scan-warning">
+            <summary>
+              <span class="warning-mark">!</span>
+              <strong>{{ preview.warnings.length }} 个账号或目录未能完整扫描</strong>
+              <b>⌄</b>
+            </summary>
+            <div class="scan-warning-list">
+              <p v-for="(warning, index) in preview.warnings" :key="`${warning.accountId}-${index}`">
+                {{ warning.accountLabel || warning.providerName }}：{{ warning.error }}
+              </p>
+            </div>
+          </details>
 
           <div v-if="!entries.length" class="empty-result">
             <span>⌕</span>
             <strong>没有匹配到可下架的资源</strong>
-            <p>请确认表格中的链接已经通过当前账号转存，或检查登录的资源库账号。</p>
+            <p>请确认表格中的资源名称与网盘内文件或文件夹名称一致，并检查对应网盘账号是否已登录。</p>
           </div>
 
           <div v-else class="entry-list">
             <article
               v-for="(entry, index) in entries"
-              :key="entry.resourceId"
+              :key="entry.id"
               class="entry-row"
-              :class="[statusMeta(entry).cls, { selected: selectedIds.includes(entry.resourceId) }]"
+              :class="[statusMeta(entry).cls, { selected: selectedIds.includes(entry.id) }]"
               :style="{ '--i': index }"
               @click="toggleEntry(entry)"
             >
               <label class="entry-check" @click.stop>
                 <input
                   type="checkbox"
-                  :checked="selectedIds.includes(entry.resourceId)"
+                  :checked="selectedIds.includes(entry.id)"
                   :disabled="['running', 'done'].includes(entry.status)"
                   @change="toggleEntry(entry)"
                 />
@@ -359,15 +372,15 @@ async function execute() {
               </span>
 
               <div class="entry-main">
-                <strong :title="entry.resourceTitle">{{ entry.resourceTitle }}</strong>
-                <span class="path" :title="entry.savedPath">{{ entry.savedPath }}</span>
+                <strong :title="entry.name">{{ entry.name }}</strong>
+                <span class="path" :title="entry.path">{{ entry.path }}</span>
                 <div class="entry-tags">
                   <span>{{ providerMeta[entry.provider]?.label }}</span>
                   <span>{{ entry.accountLabel }}</span>
-                  <span :class="{ fallback: entry.matchMethod === 'title' }">
-                    {{ entry.matchMethod === 'url' ? '链接匹配' : '标题匹配' }}
+                  <span :class="{ fallback: entry.matchMethod === 'copy' }">
+                    {{ entry.matchMethod === 'exact' ? '名称精确匹配' : '副本后缀匹配' }}
                   </span>
-                  <span v-if="entry.recordCount > 1">{{ entry.recordCount }} 条同路径记录</span>
+                  <span v-if="entry.recordCount > 1">{{ entry.recordCount }} 个表格链接指向此资源</span>
                 </div>
               </div>
 
@@ -388,8 +401,8 @@ async function execute() {
         <details v-if="preview.unmatched.length" class="card unmatched-card">
           <summary>
             <div>
-              <div class="eyebrow">NOT IN LIBRARY</div>
-              <h3 class="display">未匹配的分享链接</h3>
+              <div class="eyebrow">NOT FOUND IN NETDISK</div>
+              <h3 class="display">网盘中未找到的资源</h3>
             </div>
             <span class="tag">{{ preview.unmatched.length }} 条</span>
             <b>⌄</b>
@@ -413,7 +426,7 @@ async function execute() {
             <span class="mono">SELECTED FOR DELIST</span>
             <strong>{{ selectedEntries.length }} 条待处理</strong>
             <small>
-              百度 {{ selectedBaidu }} · 夸克 {{ selectedQuark }}；删除成功后同步移除资源库记录
+              百度 {{ selectedBaidu }} · 夸克 {{ selectedQuark }}；将按上方的网盘账号与真实路径删除
             </small>
           </div>
           <div class="execute-progress">
@@ -442,14 +455,14 @@ async function execute() {
           <div v-if="!runResult" class="confirm-body">
             <p class="confirm-lead">
               将处理 <strong>{{ selectedEntries.length }}</strong> 条资源，其中百度 {{ selectedBaidu }} 条、夸克 {{ selectedQuark }} 条。
-              文件会从对应网盘账号中删除，成功后对应资源库记录也会移除。
+              文件和文件夹会直接从对应网盘账号中删除，请再次核对账号与路径。
             </p>
             <div class="confirm-list">
-              <div v-for="entry in selectedEntries.slice(0, 6)" :key="entry.resourceId">
+              <div v-for="entry in selectedEntries.slice(0, 6)" :key="entry.id">
                 <span class="provider-mark" :class="providerMeta[entry.provider]?.cls">
                   {{ providerMeta[entry.provider]?.short }}
                 </span>
-                <div><strong>{{ entry.resourceTitle }}</strong><small>{{ entry.savedPath }}</small></div>
+                <div><strong>{{ entry.name }}</strong><small>{{ entry.accountLabel }} · {{ entry.path }}</small></div>
               </div>
               <p v-if="selectedEntries.length > 6">另有 {{ selectedEntries.length - 6 }} 条资源未展开</p>
             </div>
@@ -466,9 +479,9 @@ async function execute() {
                 <span>{{ runEntries.filter(e => ['done', 'error'].includes(e.status)).length }} / {{ runEntries.length }}</span>
               </div>
               <div class="run-list">
-                <div v-for="entry in runEntries" :key="entry.resourceId">
+                <div v-for="entry in runEntries" :key="entry.id">
                   <span class="run-state" :class="statusMeta(entry).cls"><i /></span>
-                  <strong>{{ entry.resourceTitle }}</strong>
+                  <strong>{{ entry.name }}</strong>
                   <small>{{ statusMeta(entry).label }}</small>
                 </div>
               </div>
@@ -493,7 +506,7 @@ async function execute() {
             <p v-if="runResult.failed" class="result-message">
               失败项已保留在清单中并标记为红色。常见原因是 Cookie 失效、文件已被移动或删除。修正后可重新勾选重试。
             </p>
-            <p v-else class="result-message">本次资源已从对应网盘删除，资源库记录也已同步清理。</p>
+            <p v-else class="result-message">本次选中的资源已从对应网盘账号中删除。</p>
             <div class="modal-actions">
               <button class="btn btn-primary" @click="closeConfirm">完成</button>
             </div>
@@ -648,6 +661,26 @@ async function execute() {
   font-weight: 900;
 }
 .match-warning p { margin: 1px 0 0; color: #73531d; font-size: 10px; line-height: 1.65; }
+.scan-warning {
+  margin-bottom: 12px;
+  border: 1px solid rgba(180, 35, 24, .14);
+  border-radius: 14px;
+  background: rgba(180, 35, 24, .04);
+}
+.scan-warning summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  list-style: none;
+  cursor: pointer;
+}
+.scan-warning summary::-webkit-details-marker { display: none; }
+.scan-warning summary strong { flex: 1; font-size: 10px; }
+.scan-warning summary > b { color: var(--muted); transition: transform .2s; }
+.scan-warning[open] summary > b { transform: rotate(180deg); }
+.scan-warning-list { display: grid; gap: 5px; padding: 0 13px 11px 44px; }
+.scan-warning-list p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
 .entry-list { display: grid; gap: 7px; }
 .entry-row {
   display: grid;

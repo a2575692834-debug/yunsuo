@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
 import {
+  buildDelistPreview,
   extractShareLinks,
   parseShareUrl,
   parseXlsxWorkbook
@@ -90,4 +91,89 @@ test('share URL normalization ignores query strings and unsupported providers', 
   })
   assert.equal(parseShareUrl('https://pan.xunlei.com/s/NotSupported'), null)
   assert.equal(parseShareUrl('https://example.com/s/not-supported'), null)
+})
+
+test('matches resources from the real netdisk tree within three levels', async () => {
+  const account = {
+    id: 'account-baidu-1',
+    userId: 'user-1',
+    provider: 'baidu',
+    label: '百度主账号',
+    cookie: 'cookie'
+  }
+  const tree = {
+    '/': [
+      { name: '转存', path: '/转存', type: 'dir' }
+    ],
+    '/转存': [
+      { name: '2026-11-04', path: '/转存/2026-11-04', type: 'dir' }
+    ],
+    '/转存/2026-11-04': [
+      { name: '资源甲', path: '/转存/2026-11-04/资源甲', type: 'dir' },
+      { name: '资源乙 (2)', path: '/转存/2026-11-04/资源乙 (2)', type: 'dir' },
+      { name: '无关资源', path: '/转存/2026-11-04/无关资源', type: 'dir' }
+    ]
+  }
+  let searchCalls = 0
+  const provider = {
+    name: '百度网盘',
+    canFiles: true,
+    canSearch: true,
+    async list(_account, path) {
+      return tree[path] || []
+    },
+    async search() {
+      searchCalls++
+      return []
+    }
+  }
+  const parsed = {
+    totalRows: 3,
+    sheets: ['资源'],
+    links: [
+      {
+        canonical: 'baidu:a',
+        provider: 'baidu',
+        providerName: '百度网盘',
+        key: 'a',
+        url: 'https://pan.baidu.com/s/a',
+        sourceTitle: '资源甲',
+        rows: [2]
+      },
+      {
+        canonical: 'baidu:b',
+        provider: 'baidu',
+        providerName: '百度网盘',
+        key: 'b',
+        url: 'https://pan.baidu.com/s/b',
+        sourceTitle: '资源甲',
+        rows: [3]
+      },
+      {
+        canonical: 'baidu:c',
+        provider: 'baidu',
+        providerName: '百度网盘',
+        key: 'c',
+        url: 'https://pan.baidu.com/s/c',
+        sourceTitle: '资源乙',
+        rows: [4]
+      }
+    ]
+  }
+
+  const result = await buildDelistPreview('user-1', parsed, {
+    listAccounts: async () => [account],
+    getProvider: () => provider
+  })
+
+  assert.equal(result.summary.matched, 2)
+  assert.equal(result.summary.unmatched, 0)
+  assert.equal(searchCalls, 2)
+  const exact = result.entries.find((entry) => entry.name === '资源甲')
+  assert.equal(exact.path, '/转存/2026-11-04/资源甲')
+  assert.equal(exact.accountId, account.id)
+  assert.equal(exact.matchMethod, 'exact')
+  assert.equal(exact.recordCount, 2)
+  assert.deepEqual(exact.sourceRows, [2, 3])
+  assert.equal(result.entries.find((entry) => entry.name === '资源乙 (2)').matchMethod, 'copy')
 })
