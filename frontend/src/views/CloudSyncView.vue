@@ -29,10 +29,24 @@ const pickerMode = ref('')
 const pickerOpen = ref(false)
 const submitting = ref(false)
 const tasks = ref([])
+const schedules = ref([])
+const schedulesLoading = ref(false)
+const scheduleSaving = ref(false)
+const scheduleBaiduAccountId = ref('')
+const scheduleQuarkAccountId = ref('')
+const scheduleBaiduPath = ref('')
+const scheduleQuarkPath = ref('')
 let pollTimer = null
+let scheduleTimer = null
 
 const syncAccounts = computed(() =>
   (store.accounts || []).filter((account) => ['baidu', 'quark'].includes(account.provider))
+)
+const baiduAccounts = computed(() =>
+  syncAccounts.value.filter((account) => account.provider === 'baidu')
+)
+const quarkAccounts = computed(() =>
+  syncAccounts.value.filter((account) => account.provider === 'quark')
 )
 const sourceAccount = computed(() =>
   syncAccounts.value.find((account) => account.id === sourceAccountId.value) || null
@@ -56,6 +70,49 @@ const canSubmit = computed(() =>
 )
 const sourceName = computed(() => sourcePath.value.split('/').filter(Boolean).pop() || '尚未选择')
 const destinationName = computed(() => destinationPath.value || '/')
+const scheduleBaiduAccount = computed(() =>
+  baiduAccounts.value.find((account) => account.id === scheduleBaiduAccountId.value) || null
+)
+const scheduleQuarkAccount = computed(() =>
+  quarkAccounts.value.find((account) => account.id === scheduleQuarkAccountId.value) || null
+)
+const scheduleBaiduName = computed(() =>
+  scheduleBaiduPath.value.split('/').filter(Boolean).pop() || '选择百度文件夹'
+)
+const scheduleQuarkName = computed(() =>
+  scheduleQuarkPath.value.split('/').filter(Boolean).pop() || '选择夸克文件夹'
+)
+const canSaveSchedule = computed(() =>
+  !!scheduleBaiduAccount.value &&
+  !!scheduleQuarkAccount.value &&
+  scheduleBaiduPath.value !== '' &&
+  scheduleQuarkPath.value !== '' &&
+  !scheduleSaving.value
+)
+const pickerAccount = computed(() => {
+  if (pickerMode.value === 'destination') return destinationAccount.value
+  if (pickerMode.value === 'schedule-baidu') return scheduleBaiduAccount.value
+  if (pickerMode.value === 'schedule-quark') return scheduleQuarkAccount.value
+  return sourceAccount.value
+})
+const pickerViewMode = computed(() =>
+  pickerMode.value.startsWith('schedule-') ? 'folder' : (
+    pickerMode.value === 'destination' ? 'destination' : 'source'
+  )
+)
+const pickerTitle = computed(() => {
+  if (pickerMode.value === 'destination') return '选择目标目录'
+  if (pickerMode.value === 'schedule-baidu') return '选择百度同步文件夹'
+  if (pickerMode.value === 'schedule-quark') return '选择夸克同步文件夹'
+  return '选择要同步的内容'
+})
+const pickerDescription = computed(() => {
+  if (pickerMode.value === 'destination') return '文件会写入这个目录；同名文件默认跳过。'
+  if (pickerMode.value.startsWith('schedule-')) {
+    return '进入要持续同步的文件夹后点“选择当前文件夹”。之后每 24 小时自动双向同步。'
+  }
+  return '可以进入文件夹后选择整个目录，也可以直接点选一个文件。'
+})
 const availableDirections = computed(() => ({
   baidu: syncAccounts.value.some((account) => account.provider === 'baidu'),
   quark: syncAccounts.value.some((account) => account.provider === 'quark')
@@ -90,6 +147,12 @@ function ensureAccounts() {
       syncAccounts.value.find((account) => account.id !== sourceAccount.value?.id)?.id ||
       ''
   }
+  if (!scheduleBaiduAccount.value) {
+    scheduleBaiduAccountId.value = baiduAccounts.value[0]?.id || ''
+  }
+  if (!scheduleQuarkAccount.value) {
+    scheduleQuarkAccountId.value = quarkAccounts.value[0]?.id || ''
+  }
 }
 
 function changeSource() {
@@ -116,6 +179,8 @@ function openPicker(mode) {
 function choosePath(path) {
   if (pickerMode.value === 'source') sourcePath.value = path
   if (pickerMode.value === 'destination') destinationPath.value = path
+  if (pickerMode.value === 'schedule-baidu') scheduleBaiduPath.value = path
+  if (pickerMode.value === 'schedule-quark') scheduleQuarkPath.value = path
   pickerOpen.value = false
 }
 
@@ -135,6 +200,85 @@ async function loadTasks() {
     tasks.value = await api.get('/tasks?kind=cloud-sync')
   } catch {
     // 任务轮询失败不阻塞同步表单。
+  }
+}
+
+async function loadSchedules() {
+  schedulesLoading.value = true
+  try {
+    schedules.value = await api.get('/cloud-sync/schedules')
+  } catch {
+    // 计划轮询失败不阻塞当前同步表单。
+  } finally {
+    schedulesLoading.value = false
+  }
+}
+
+function scheduleStatus(schedule) {
+  if (!schedule.enabled) return { label: '已暂停', cls: 'muted' }
+  if (schedule.status === 'queued' || schedule.lastTaskStatus === 'queued') {
+    return { label: '等待执行', cls: 'gold' }
+  }
+  if (schedule.status === 'syncing' || schedule.lastTaskStatus === 'running') {
+    return { label: '双向同步中', cls: 'teal' }
+  }
+  if (schedule.status === 'error') return { label: '上次失败', cls: 'coral' }
+  return { label: '24h 运行中', cls: 'teal' }
+}
+
+async function saveSchedule() {
+  if (!canSaveSchedule.value) {
+    return notify('请分别选择百度、夸克账号和要同步的两个文件夹', 'error')
+  }
+  scheduleSaving.value = true
+  try {
+    await api.post('/cloud-sync/schedules', {
+      baiduAccountId: scheduleBaiduAccountId.value,
+      baiduPath: scheduleBaiduPath.value,
+      quarkAccountId: scheduleQuarkAccountId.value,
+      quarkPath: scheduleQuarkPath.value
+    })
+    scheduleBaiduPath.value = ''
+    scheduleQuarkPath.value = ''
+    notify('24 小时双向同步计划已保存', 'success')
+    await loadSchedules()
+  } catch (err) {
+    notify(err.message, 'error')
+  } finally {
+    scheduleSaving.value = false
+  }
+}
+
+async function toggleSchedule(schedule) {
+  try {
+    await api.patch(`/cloud-sync/schedules/${schedule.id}`, {
+      enabled: !schedule.enabled
+    })
+    notify(schedule.enabled ? '同步计划已暂停' : '同步计划已开启', 'success')
+    await loadSchedules()
+  } catch (err) {
+    notify(err.message, 'error')
+  }
+}
+
+async function runSchedule(schedule) {
+  try {
+    await api.post(`/cloud-sync/schedules/${schedule.id}/run`)
+    notify('已创建一次双向同步任务', 'success')
+    await Promise.all([loadSchedules(), loadTasks()])
+  } catch (err) {
+    notify(err.message, 'error')
+  }
+}
+
+async function deleteSchedule(schedule) {
+  if (!window.confirm(`删除“${schedule.baiduPath} ⇄ ${schedule.quarkPath}”这个同步计划？`)) return
+  try {
+    await api.del(`/cloud-sync/schedules/${schedule.id}`)
+    notify('同步计划已删除', 'success')
+    await loadSchedules()
+  } catch (err) {
+    notify(err.message, 'error')
   }
 }
 
@@ -166,30 +310,37 @@ async function startSync() {
 
 watch(() => store.accounts, ensureAccounts, { deep: true, immediate: true })
 watch(sourceAccountId, changeSource)
+watch(scheduleBaiduAccountId, () => { scheduleBaiduPath.value = '' })
+watch(scheduleQuarkAccountId, () => { scheduleQuarkPath.value = '' })
 
 onMounted(() => {
   ensureAccounts()
   loadTasks()
+  loadSchedules()
   pollTimer = setInterval(loadTasks, 2200)
+  scheduleTimer = setInterval(loadSchedules, 6000)
 })
 
-onUnmounted(() => clearInterval(pollTimer))
+onUnmounted(() => {
+  clearInterval(pollTimer)
+  clearInterval(scheduleTimer)
+})
 </script>
 
 <template>
   <div class="cloud-sync">
     <section class="sync-hero card">
       <div class="hero-copy">
-        <span class="mono hero-kicker">CLOUD BRIDGE · ONE WAY</span>
+        <span class="mono hero-kicker">CLOUD BRIDGE · 24H MIRROR</span>
         <h3 class="display">从一朵云，抵达另一朵云。</h3>
         <p>
           通过临时分享完成百度与夸克之间的跨盘搬运，不需要先下载到本地。
-          目标目录已有同名文件时会自动跳过，避免重复占用空间。
+          选定两个文件夹后，可每 24 小时自动双向增量同步；同名文件始终跳过。
         </p>
         <div class="hero-badges">
           <span><i />服务端中转</span>
           <span><i />增量去重</span>
-          <span><i />任务可追踪</span>
+          <span><i />24h 双向</span>
         </div>
       </div>
 
@@ -200,7 +351,7 @@ onUnmounted(() => clearInterval(pollTimer))
         </div>
         <div class="bridge-line">
           <i /><i /><i />
-          <b>→</b>
+          <b>⇄</b>
         </div>
         <div class="cloud-node quark-node">
           <span>夸</span>
@@ -319,6 +470,146 @@ onUnmounted(() => clearInterval(pollTimer))
       </div>
     </section>
 
+    <section class="schedule-section">
+      <header class="section-head schedule-head">
+        <div>
+          <span class="mono">AUTO MIRROR · EVERY 24H</span>
+          <h4 class="display">只选一次，之后双向同步。</h4>
+          <p>计划保存在服务器。到达间隔后自动把两边新增文件送往另一侧，已有同名文件不会重复转存。</p>
+        </div>
+        <span class="schedule-count">{{ schedules.length }} 个计划</span>
+      </header>
+
+      <article class="schedule-builder card">
+        <div class="pair-grid">
+          <div class="pair-side baidu-side">
+            <div class="pair-side-head">
+              <span class="provider-seal blue">百</span>
+              <div>
+                <small class="mono">BAIDU FOLDER</small>
+                <strong class="display">百度同步文件夹</strong>
+              </div>
+            </div>
+            <label class="field-label">百度网盘账号</label>
+            <select v-model="scheduleBaiduAccountId" class="select full">
+              <option v-if="!baiduAccounts.length" value="">请先添加百度网盘账号</option>
+              <option v-for="account in baiduAccounts" :key="account.id" :value="account.id">
+                {{ account.label }}
+              </option>
+            </select>
+            <label class="field-label">保持同步的目录</label>
+            <div class="path-field pair-path">
+              <div class="path-icon">{{ scheduleBaiduPath ? '▣' : '⌂' }}</div>
+              <div class="path-copy">
+                <strong>{{ scheduleBaiduName }}</strong>
+                <small>{{ scheduleBaiduPath || '尚未选择文件夹' }}</small>
+              </div>
+              <button class="browse" :disabled="!scheduleBaiduAccount" @click="openPicker('schedule-baidu')">浏览</button>
+            </div>
+          </div>
+
+          <div class="pair-bridge" aria-hidden="true">
+            <span>⇄</span>
+            <small>24H</small>
+          </div>
+
+          <div class="pair-side quark-side">
+            <div class="pair-side-head">
+              <span class="provider-seal orange">夸</span>
+              <div>
+                <small class="mono">QUARK FOLDER</small>
+                <strong class="display">夸克同步文件夹</strong>
+              </div>
+            </div>
+            <label class="field-label">夸克网盘账号</label>
+            <select v-model="scheduleQuarkAccountId" class="select full">
+              <option v-if="!quarkAccounts.length" value="">请先添加夸克网盘账号</option>
+              <option v-for="account in quarkAccounts" :key="account.id" :value="account.id">
+                {{ account.label }}
+              </option>
+            </select>
+            <label class="field-label">保持同步的目录</label>
+            <div class="path-field pair-path">
+              <div class="path-icon">{{ scheduleQuarkPath ? '▣' : '⌂' }}</div>
+              <div class="path-copy">
+                <strong>{{ scheduleQuarkName }}</strong>
+                <small>{{ scheduleQuarkPath || '尚未选择文件夹' }}</small>
+              </div>
+              <button class="browse" :disabled="!scheduleQuarkAccount" @click="openPicker('schedule-quark')">浏览</button>
+            </div>
+          </div>
+        </div>
+
+        <footer class="schedule-builder-foot">
+          <div class="schedule-note">
+            <span class="pulse-dot" />
+            <div>
+              <strong>保存后无需每次重新选择</strong>
+              <small>第一次执行时间默认为 24 小时后，也可以立即手动触发。</small>
+            </div>
+          </div>
+          <button class="btn btn-primary schedule-save" :disabled="!canSaveSchedule" @click="saveSchedule">
+            {{ scheduleSaving ? '正在保存计划…' : '保存并开启 24h 双向同步' }}
+          </button>
+        </footer>
+      </article>
+
+      <div v-if="schedulesLoading && !schedules.length" class="schedule-loading card">
+        <span class="loader" />
+        正在读取同步计划
+      </div>
+
+      <div v-else-if="schedules.length" class="schedule-list">
+        <article v-for="(schedule, index) in schedules" :key="schedule.id" class="schedule-item card" :style="{ '--i': index }">
+          <div class="schedule-route">
+            <div class="schedule-cloud baidu">
+              <span>百</span>
+              <div>
+                <small>{{ schedule.baiduAccountLabel || '百度网盘' }}</small>
+                <strong>{{ schedule.baiduPath }}</strong>
+              </div>
+            </div>
+            <div class="schedule-flow">
+              <i />
+              <b>⇄</b>
+              <i />
+            </div>
+            <div class="schedule-cloud quark">
+              <span>夸</span>
+              <div>
+                <small>{{ schedule.quarkAccountLabel || '夸克网盘' }}</small>
+                <strong>{{ schedule.quarkPath }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="schedule-state">
+            <span class="schedule-status" :class="scheduleStatus(schedule).cls">
+              <i />
+              {{ scheduleStatus(schedule).label }}
+            </span>
+            <span>下次：{{ schedule.enabled ? fmtTime(schedule.nextRunAt) : '已暂停' }}</span>
+            <span>上次：{{ fmtTime(schedule.lastRunAt) }}</span>
+            <small v-if="schedule.lastError">{{ schedule.lastError }}</small>
+          </div>
+
+          <div class="schedule-actions">
+            <button
+              class="schedule-action run"
+              :disabled="['queued', 'syncing'].includes(schedule.status)"
+              @click="runSchedule(schedule)"
+            >
+              立即同步
+            </button>
+            <button class="schedule-action" @click="toggleSchedule(schedule)">
+              {{ schedule.enabled ? '暂停' : '开启' }}
+            </button>
+            <button class="schedule-action danger" @click="deleteSchedule(schedule)">删除</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section class="recent-section">
       <header class="section-head">
         <div>
@@ -357,12 +648,10 @@ onUnmounted(() => clearInterval(pollTimer))
 
     <CloudPathPickerModal
       v-model="pickerOpen"
-      :account="pickerMode === 'destination' ? destinationAccount : sourceAccount"
-      :mode="pickerMode === 'destination' ? 'destination' : 'source'"
-      :title="pickerMode === 'destination' ? '选择目标目录' : '选择要同步的内容'"
-      :description="pickerMode === 'destination'
-        ? '文件会写入这个目录；同名文件默认跳过。'
-        : '可以进入文件夹后选择整个目录，也可以直接点选一个文件。'"
+      :account="pickerAccount"
+      :mode="pickerViewMode"
+      :title="pickerTitle"
+      :description="pickerDescription"
       @select="choosePath"
     />
   </div>
@@ -626,6 +915,174 @@ onUnmounted(() => clearInterval(pollTimer))
 .launch-note { display: flex; align-items: center; gap: 7px; max-width: 230px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .pulse-dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 0 rgba(15,118,110,.4); animation: pulse 2s infinite; }
 .launch-btn { min-width: 150px; }
+.schedule-section { display: grid; gap: 14px; }
+.schedule-head { align-items: flex-start; }
+.schedule-head p { max-width: 720px; margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.schedule-count {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+.schedule-builder {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  overflow: hidden;
+  background:
+    radial-gradient(420px 220px at 0% 0%, rgba(62,101,214,.08), transparent 70%),
+    radial-gradient(420px 220px at 100% 0%, rgba(227,91,34,.08), transparent 70%),
+    var(--card-a);
+}
+.schedule-builder::after {
+  content: "24H";
+  position: absolute;
+  right: 24px;
+  top: -20px;
+  color: rgba(16,24,34,.025);
+  font-family: var(--display);
+  font-size: 118px;
+  pointer-events: none;
+}
+.pair-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.pair-side {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--line-soft);
+  border-radius: 20px;
+  background: rgba(255,255,255,.36);
+}
+.baidu-side { box-shadow: inset 3px 0 0 rgba(62,101,214,.45); }
+.quark-side { box-shadow: inset -3px 0 0 rgba(227,91,34,.45); }
+.pair-side-head { display: flex; align-items: center; gap: 11px; margin-bottom: 2px; }
+.pair-side-head .provider-seal { width: 38px; height: 38px; border-radius: 12px; font-size: 17px; }
+.pair-side-head div { display: grid; gap: 3px; }
+.pair-side-head small { color: var(--muted); font-size: 7px; letter-spacing: .13em; }
+.pair-side-head strong { font-size: 19px; }
+.pair-path { min-height: 58px; }
+.pair-bridge {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  color: var(--teal);
+}
+.pair-bridge::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -12px;
+  right: -12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line), transparent);
+}
+.pair-bridge span {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 4px solid var(--card-a);
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  font-size: 19px;
+  box-shadow: 0 12px 26px rgba(16,24,34,.16);
+}
+.pair-bridge small { color: var(--muted); font-family: var(--mono); font-size: 7px; letter-spacing: .12em; }
+.schedule-builder-foot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 1px;
+}
+.schedule-note { display: flex; align-items: center; gap: 10px; }
+.schedule-note div { display: grid; gap: 3px; }
+.schedule-note strong { font-size: 10px; }
+.schedule-note small { color: var(--muted); font-size: 8px; }
+.schedule-save { min-width: 230px; }
+.schedule-loading {
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.schedule-list { display: grid; gap: 9px; }
+.schedule-item {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.4fr) minmax(220px, .8fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 17px;
+  opacity: 0;
+  animation: reveal .42s cubic-bezier(.2,.8,.2,1) forwards;
+  animation-delay: calc(var(--i) * 45ms);
+}
+.schedule-route { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) 70px minmax(0,1fr); align-items: center; gap: 8px; }
+.schedule-cloud { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.schedule-cloud > span {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #fff;
+  font-family: var(--display);
+  font-size: 15px;
+}
+.schedule-cloud.baidu > span { background: linear-gradient(145deg, #4d79ed, #2149b8); }
+.schedule-cloud.quark > span { background: linear-gradient(145deg, #ff8a3d, #dd4f16); }
+.schedule-cloud div { min-width: 0; display: grid; gap: 2px; }
+.schedule-cloud small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 8px; }
+.schedule-cloud strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.schedule-flow { display: flex; align-items: center; gap: 5px; color: var(--teal); }
+.schedule-flow i { flex: 1; height: 1px; background: var(--line); }
+.schedule-flow b { font-size: 16px; font-weight: 400; }
+.schedule-state { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 11px; color: var(--muted); font-size: 8px; }
+.schedule-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; }
+.schedule-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.schedule-status.teal { color: var(--teal); }
+.schedule-status.gold { color: var(--gold); }
+.schedule-status.coral { color: var(--coral); }
+.schedule-status.muted { color: var(--muted); }
+.schedule-state > small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--coral); font-size: 8px; }
+.schedule-actions { display: flex; align-items: center; gap: 6px; }
+.schedule-action {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 9px;
+  background: var(--card-a);
+  color: var(--ink-2);
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: .2s;
+}
+.schedule-action:hover { border-color: rgba(16,24,34,.24); transform: translateY(-1px); }
+.schedule-action.run { border-color: transparent; background: var(--ink); color: #fff; }
+.schedule-action.danger { color: var(--coral); }
+.schedule-action:disabled { opacity: .38; cursor: not-allowed; transform: none; }
 .recent-section { display: grid; gap: 13px; }
 .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .section-head .mono { color: var(--coral); font-size: 7px; letter-spacing: .22em; }
@@ -682,6 +1139,8 @@ onUnmounted(() => clearInterval(pollTimer))
   .direction-switch button { border-width: 4px; transform: rotate(90deg); }
   .direction-switch button:hover { transform: rotate(270deg); }
   .sources, .source-card { order: 0; }
+  .schedule-item { grid-template-columns: 1fr; align-items: stretch; }
+  .schedule-actions { justify-content: flex-end; }
 }
 @media (max-width: 760px) {
   .sync-hero { padding: 26px 21px; }
@@ -695,5 +1154,17 @@ onUnmounted(() => clearInterval(pollTimer))
   .route-name { width: 100%; order: 3; flex-direction: column; align-items: flex-start; }
   .mini-task { grid-template-columns: 1fr auto; }
   .task-status { grid-column: 1 / -1; }
+  .schedule-head { align-items: flex-start; flex-direction: column; }
+  .pair-grid { grid-template-columns: 1fr; }
+  .pair-bridge { padding: 5px 0; }
+  .pair-bridge::before { top: auto; left: 25%; right: 25%; }
+  .pair-bridge span { transform: rotate(90deg); }
+  .schedule-builder-foot { align-items: stretch; flex-direction: column; }
+  .schedule-save { width: 100%; }
+  .schedule-route { grid-template-columns: 1fr; }
+  .schedule-flow { justify-content: center; }
+  .schedule-flow i { max-width: 45px; }
+  .schedule-actions { justify-content: stretch; }
+  .schedule-action { flex: 1; }
 }
 </style>

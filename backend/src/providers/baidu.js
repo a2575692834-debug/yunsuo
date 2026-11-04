@@ -745,18 +745,24 @@ export class BaiduProvider extends Provider {
     const context = await this.shareContext(account, link, passcode)
     const { surl, shareid, uk, pageToken, activeAccount, files, sourceName } = context
     const syncMode = link.syncMode === true
-    const jobPath = await this.transferFolder(
-      activeAccount,
-      targetPath,
-      sourceName,
-      syncMode
-    )
+    const exactTargetPath = String(link.exactTargetPath || '').trim()
+    let jobPath
+    let existingItems = null
+    if (exactTargetPath) {
+      if (exactTargetPath === '/') this.fail('双向同步不能直接使用网盘根目录')
+      jobPath = await this.ensureFolder(activeAccount, exactTargetPath)
+      existingItems = await this.list(activeAccount, jobPath)
+    } else {
+      jobPath = await this.transferFolder(
+        activeAccount,
+        targetPath,
+        sourceName,
+        syncMode
+      )
+      if (syncMode) existingItems = await this.list(activeAccount, jobPath)
+    }
     const selectedFiles = syncMode
-      ? selectMissingSyncItems(
-          files,
-          await this.list(activeAccount, jobPath),
-          { sourceName }
-        )
+      ? selectMissingSyncItems(files, existingItems || [], { sourceName })
       : files
     const fsIds = selectedFiles.map((x) => x.fs_id).filter(Boolean)
     if (!fsIds.length) {

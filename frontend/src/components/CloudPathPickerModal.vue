@@ -21,6 +21,10 @@ const folders = computed(() => items.value.filter((item) => item.type === 'dir')
 const files = computed(() => props.mode === 'source'
   ? items.value.filter((item) => item.type !== 'dir')
   : [])
+const eyebrow = computed(() => {
+  if (props.mode === 'folder') return 'FOLDER EXPLORER'
+  return props.mode === 'source' ? 'SOURCE EXPLORER' : 'DESTINATION EXPLORER'
+})
 const crumbs = computed(() => {
   const out = [{ label: '根目录', path: '/' }]
   let current = ''
@@ -30,7 +34,16 @@ const crumbs = computed(() => {
   }
   return out
 })
-const confirmText = computed(() => props.mode === 'source' ? '同步整个文件夹' : '选择此目录')
+const confirmText = computed(() => {
+  if (props.mode === 'source') return '同步整个文件夹'
+  if (props.mode === 'folder') return '选择当前文件夹'
+  return '选择此目录'
+})
+const canConfirm = computed(() =>
+  !loading.value &&
+  !!props.account &&
+  !(props.mode === 'folder' && path.value === '/')
+)
 
 function close() {
   emit('update:modelValue', false)
@@ -85,7 +98,7 @@ watch(
         <section class="modal">
           <header class="modal-head">
             <div>
-              <span class="mono eyebrow">{{ mode === 'source' ? 'SOURCE EXPLORER' : 'DESTINATION EXPLORER' }}</span>
+              <span class="mono eyebrow">{{ eyebrow }}</span>
               <h3 class="display">{{ title }}</h3>
               <p>{{ account?.label || '网盘账号' }}</p>
               <small v-if="description">{{ description }}</small>
@@ -153,7 +166,7 @@ watch(
             </div>
             <div class="actions">
               <button class="btn btn-ghost" @click="close">取消</button>
-              <button class="btn btn-primary" :disabled="loading || !account" @click="confirm">{{ confirmText }}</button>
+              <button class="btn btn-primary" :disabled="!canConfirm" @click="confirm">{{ confirmText }}</button>
             </div>
           </footer>
         </section>
